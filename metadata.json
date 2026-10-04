@@ -1,0 +1,6 @@
+{
+  "name": "אילן היוחסין של משפחת יהודה",
+  "description": "מערכת מקיפה לניהול, תצוגה, ייצוא והדפסה של אילן היוחסין של משפחת יהודה לאורך דורות",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
