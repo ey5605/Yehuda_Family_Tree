@@ -114,7 +114,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
-  // Sync form when person opens
+  // Sync form only when a different person is opened
   useEffect(() => {
     if (person) {
       setFullName(person.fullName || '');
@@ -128,7 +128,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
       setPhotoError(null);
       setIsUploadingPhoto(false);
     }
-  }, [person]);
+  }, [person?.id]);
 
   if (!person) return null;
 

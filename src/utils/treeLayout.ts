@@ -110,9 +110,9 @@ export function computeTreeLayout(
     dims = {
       nodeWidth: 192,
       nodeHeight: 60,
-      hGap: 46,
-      vGap: 16,
-      spouseGap: 14,
+      hGap: 64,
+      vGap: 36,
+      spouseGap: 24,
     };
   }
 
@@ -705,6 +705,41 @@ function computeHorizontalRTLTreeLayout(
     return null;
   }
 
+  function isDescendantCluster(sub: HFamilySubtree): boolean {
+    return (
+      sub.orderedSpouses.length > 0 ||
+      sub.unions.some(u => u.childrenSubtrees.length > 0) ||
+      (sub.descendantCount ?? 0) > 0
+    );
+  }
+
+  function getSiblingGap(subA: HFamilySubtree, subB: HFamilySubtree): number {
+    const clusterA = isDescendantCluster(subA);
+    const clusterB = isDescendantCluster(subB);
+    if (clusterA && clusterB) {
+      // Generous gap between sibling family clusters so their descendant groups don't look cramped
+      return 84;
+    }
+    if (clusterA || clusterB) {
+      // Gap between a sibling family cluster and a single sibling
+      return 56;
+    }
+    // Gap between two single siblings with no spouses/children
+    return dims.vGap;
+  }
+
+  function computeChildrenTotalHeight(subtrees: HFamilySubtree[]): number {
+    if (subtrees.length === 0) return 0;
+    let total = 0;
+    for (let i = 0; i < subtrees.length; i++) {
+      total += subtrees[i].height;
+      if (i < subtrees.length - 1) {
+        total += getSiblingGap(subtrees[i], subtrees[i + 1]);
+      }
+    }
+    return total;
+  }
+
   const visitedInBuild = new Set<string>();
 
   function buildHSubtree(person: Person): HFamilySubtree {
@@ -760,10 +795,7 @@ function computeHorizontalRTLTreeLayout(
     const unions: HUnionGroup[] = [];
     for (const sp of orderedSpouses) {
       const childSubs = unionMap.get(sp.id) || [];
-      let uHeight = 0;
-      if (childSubs.length > 0) {
-        uHeight = childSubs.reduce((acc, c) => acc + c.height, 0) + (childSubs.length - 1) * dims.vGap;
-      }
+      const uHeight = computeChildrenTotalHeight(childSubs);
       unions.push({
         spouse: sp,
         childrenSubtrees: childSubs,
@@ -773,7 +805,7 @@ function computeHorizontalRTLTreeLayout(
 
     const soloChildren = unionMap.get(null) || [];
     if (soloChildren.length > 0) {
-      let soloHeight = soloChildren.reduce((acc, c) => acc + c.height, 0) + (soloChildren.length - 1) * dims.vGap;
+      const soloHeight = computeChildrenTotalHeight(soloChildren);
       unions.push({
         spouse: null,
         childrenSubtrees: soloChildren,
@@ -784,13 +816,8 @@ function computeHorizontalRTLTreeLayout(
     const totalAdults = 1 + allSpouses.length;
     const adultsHeight = totalAdults * dims.nodeHeight + (totalAdults - 1) * dims.spouseGap;
 
-    let totalChildrenHeight = 0;
     const allChildrenSubtrees = unions.flatMap(u => u.childrenSubtrees);
-    if (allChildrenSubtrees.length > 0) {
-      totalChildrenHeight =
-        allChildrenSubtrees.reduce((acc, c) => acc + c.height, 0) +
-        (allChildrenSubtrees.length - 1) * dims.vGap;
-    }
+    const totalChildrenHeight = computeChildrenTotalHeight(allChildrenSubtrees);
 
     const height = Math.max(adultsHeight, totalChildrenHeight);
 
@@ -988,34 +1015,45 @@ function computeHorizontalRTLTreeLayout(
         anchorY = pPos.y + dims.nodeHeight / 2;
       }
 
+      // Connecting line from between parents to descendant branch:
+      // When couple is present: line starts at the vertical marriage line between parents!
+      // When solo: line starts at parent node's left edge.
+      const stemStartX = union.spouse ? nodeX + dims.nodeWidth / 2 : nodeX;
+
+      // Branch collapse/expand button position:
+      // User request: "את לחצן הפתיחה/סגירה של הענפים תמקם בין בני הזוג, בחלק השמאלי של המלבן"
+      // In Y: anchorY (between the spouses in their vertical gap)
+      // In X: in the left part of the couple rectangle (nodeX + 22)
+      const branchBtnX = union.spouse ? nodeX + 22 : nodeX - 14;
+      const branchBtnY = anchorY;
+
       if (tree.isCollapsed) {
-        // Stub connector going left 26px and collapse button
-        const stubEndX = nodeX - 26;
+        // Line from marriage line between parents to the branch button / left edge of rectangle
         connectors.push({
           id: `h-stem-stub-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           type: 'child',
-          path: `M ${nodeX} ${anchorY} L ${stubEndX} ${anchorY}`,
-          fromX: nodeX,
+          path: `M ${stemStartX} ${anchorY} L ${nodeX} ${anchorY}`,
+          fromX: stemStartX,
           fromY: anchorY,
-          toX: stubEndX,
+          toX: nodeX,
           toY: anchorY,
         });
 
         branchButtons.push({
           id: `h-branch-btn-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.person.id,
-          x: stubEndX,
-          y: anchorY,
+          x: branchBtnX,
+          y: branchBtnY,
           descendantCount: tree.descendantCount ?? countDescendants(data, tree.person.id),
           isCollapsed: true,
         });
       } else if (union.childrenSubtrees.length > 0) {
-        // Stem to bus bar (leftward)
+        // Full stem from marriage line between parents, through the left part of the rectangle, all the way to bus bar
         connectors.push({
           id: `h-stem-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           type: 'child',
-          path: `M ${nodeX} ${anchorY} L ${busX} ${anchorY}`,
-          fromX: nodeX,
+          path: `M ${stemStartX} ${anchorY} L ${busX} ${anchorY}`,
+          fromX: stemStartX,
           fromY: anchorY,
           toX: busX,
           toY: anchorY,
@@ -1024,15 +1062,13 @@ function computeHorizontalRTLTreeLayout(
         branchButtons.push({
           id: `h-branch-btn-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.person.id,
-          x: (nodeX + busX) / 2,
-          y: anchorY,
+          x: branchBtnX,
+          y: branchBtnY,
           descendantCount: tree.descendantCount ?? countDescendants(data, tree.person.id),
           isCollapsed: false,
         });
 
-        const uChildrenHeight =
-          union.childrenSubtrees.reduce((acc, c) => acc + c.height, 0) +
-          (union.childrenSubtrees.length - 1) * dims.vGap;
+        const uChildrenHeight = computeChildrenTotalHeight(union.childrenSubtrees);
 
         let uStartChildY = anchorY - uChildrenHeight / 2;
         if (uStartChildY < topY) {
@@ -1042,7 +1078,8 @@ function computeHorizontalRTLTreeLayout(
         let currentChildY = uStartChildY;
         const childMidpointsY: number[] = [];
 
-        for (const childSub of union.childrenSubtrees) {
+        for (let i = 0; i < union.childrenSubtrees.length; i++) {
+          const childSub = union.childrenSubtrees[i];
           placeHSubtree(childSub, currentChildY, baseStartX);
 
           // Connect strictly to the child primary node
@@ -1065,7 +1102,10 @@ function computeHorizontalRTLTreeLayout(
             toY: childCenterY,
           });
 
-          currentChildY += childSub.height + dims.vGap;
+          currentChildY += childSub.height;
+          if (i < union.childrenSubtrees.length - 1) {
+            currentChildY += getSiblingGap(childSub, union.childrenSubtrees[i + 1]);
+          }
         }
 
         if (childMidpointsY.length > 0) {
@@ -1121,14 +1161,14 @@ function computeHorizontalRTLTreeLayout(
     if (placedPersons.has(root.id) || hiddenPersons.has(root.id)) continue;
     const subtree = buildHSubtree(root);
     placeHSubtree(subtree, currentGroupTop, baseStartX);
-    currentGroupTop += subtree.height + dims.vGap * 2;
+    currentGroupTop += subtree.height + 90;
   }
 
   for (const person of Object.values(data.persons)) {
     if (hiddenPersons.has(person.id) || placedPersons.has(person.id)) continue;
     const subtree = buildHSubtree(person);
     placeHSubtree(subtree, currentGroupTop, baseStartX);
-    currentGroupTop += subtree.height + dims.vGap * 2;
+    currentGroupTop += subtree.height + 90;
   }
 
   return calculateBounds(nodes, connectors, branchButtons);

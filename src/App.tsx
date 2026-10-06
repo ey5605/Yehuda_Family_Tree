@@ -12,6 +12,7 @@ import {
   loadFamilyTree,
   saveFamilyTree,
   fetchServerTree,
+  mergeFamilyTrees,
   EMPTY_TREE,
   SaveStatus
 } from './utils/storage';
@@ -44,6 +45,16 @@ export default function App() {
   const [future, setFuture] = useState<FamilyTreeData[]>([]);
   const originalTreeBackupRef = useRef<FamilyTreeData | null>(null);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isPersonModalOpenRef = useRef(false);
+  const saveStatusRef = useRef<SaveStatus>('saved');
+
+  useEffect(() => {
+    isPersonModalOpenRef.current = isPersonModalOpen;
+  }, [isPersonModalOpen]);
+
+  useEffect(() => {
+    saveStatusRef.current = saveStatus;
+  }, [saveStatus]);
 
   // Load tree on initial mount
   useEffect(() => {
@@ -59,6 +70,10 @@ export default function App() {
   // Auto-sync when user switches to tab or unlocks device
   useEffect(() => {
     const handleSyncCheck = async () => {
+      // Do NOT auto-sync in background if user is actively in the edit modal or if save is currently in-flight
+      if (isPersonModalOpenRef.current || saveStatusRef.current === 'saving') {
+        return;
+      }
       if (document.visibilityState === 'visible') {
         const fresh = await fetchServerTree();
         if (fresh && fresh.metadata?.lastUpdated) {
@@ -66,7 +81,8 @@ export default function App() {
             const prevTime = prev.metadata?.lastUpdated ? new Date(prev.metadata.lastUpdated).getTime() : 0;
             const freshTime = new Date(fresh.metadata.lastUpdated).getTime();
             if (freshTime > prevTime) {
-              return fresh;
+              // Intelligently merge so local uncommitted or recent edits (e.g. genders, notes) are never wiped out
+              return mergeFamilyTrees(fresh, prev);
             }
             return prev;
           });
@@ -88,11 +104,20 @@ export default function App() {
   // Push new state with undo record
   const updateTreeData = useCallback(
     (newTree: FamilyTreeData, recordHistory = true, immediateSave = false) => {
+      // CRITICAL: Always generate a fresh lastUpdated timestamp on the tree state
+      const treeWithFreshTimestamp: FamilyTreeData = {
+        ...newTree,
+        metadata: {
+          ...newTree.metadata,
+          lastUpdated: new Date().toISOString(),
+        },
+      };
+
       if (recordHistory) {
         setHistory(prev => [...prev.slice(-30), treeData]);
         setFuture([]);
       }
-      setTreeData(newTree);
+      setTreeData(treeWithFreshTimestamp);
 
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
@@ -100,12 +125,12 @@ export default function App() {
 
       setSaveStatus('saving');
       if (immediateSave) {
-        saveFamilyTree(newTree).then(success => {
+        saveFamilyTree(treeWithFreshTimestamp).then(success => {
           setSaveStatus(success ? 'saved' : 'offline');
         });
       } else {
         saveTimerRef.current = setTimeout(async () => {
-          const success = await saveFamilyTree(newTree);
+          const success = await saveFamilyTree(treeWithFreshTimestamp);
           setSaveStatus(success ? 'saved' : 'offline');
         }, 350);
       }
