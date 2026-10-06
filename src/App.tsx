@@ -43,6 +43,7 @@ export default function App() {
   const [history, setHistory] = useState<FamilyTreeData[]>([]);
   const [future, setFuture] = useState<FamilyTreeData[]>([]);
   const originalTreeBackupRef = useRef<FamilyTreeData | null>(null);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load tree on initial mount
   useEffect(() => {
@@ -53,6 +54,31 @@ export default function App() {
       setFitTrigger(t => t + 1);
     }
     init();
+  }, []);
+
+  // Auto-sync when user switches to tab or unlocks device
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        const fresh = await fetchServerTree();
+        if (fresh && fresh.metadata?.lastUpdated) {
+          setTreeData(prev => {
+            const prevTime = prev.metadata?.lastUpdated ? new Date(prev.metadata.lastUpdated).getTime() : 0;
+            const freshTime = new Date(fresh.metadata.lastUpdated).getTime();
+            if (freshTime > prevTime) {
+              return fresh;
+            }
+            return prev;
+          });
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
   }, []);
 
   // Push new state with undo record
@@ -66,12 +92,13 @@ export default function App() {
 
       // Trigger debounced autosave
       setSaveStatus('saving');
-      const timer = setTimeout(async () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      saveTimerRef.current = setTimeout(async () => {
         const success = await saveFamilyTree(newTree);
         setSaveStatus(success ? 'saved' : 'offline');
-      }, 500);
-
-      return () => clearTimeout(timer);
+      }, 400);
     },
     [treeData]
   );

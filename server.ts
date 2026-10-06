@@ -35,9 +35,13 @@ if (!fs.existsSync(DATA_DIR)) {
 // API: Get family tree data
 app.get('/api/tree', (req, res) => {
   try {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     if (fs.existsSync(DATA_FILE)) {
       const content = fs.readFileSync(DATA_FILE, 'utf-8');
-      res.setHeader('Content-Type', 'application/json');
       return res.send(content);
     }
     // Return empty tree structure
@@ -67,6 +71,7 @@ app.post('/api/tree', (req, res) => {
       lastUpdated: new Date().toISOString(),
     };
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.json({ success: true, timestamp: data.metadata.lastUpdated });
   } catch (error) {
     console.error('Error saving tree file:', error);

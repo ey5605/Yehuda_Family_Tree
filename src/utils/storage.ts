@@ -2,7 +2,8 @@ import { FamilyTreeData } from '../types/family';
 import { parseUniversalFamilyJson } from './universalTreeImporter';
 import { INITIAL_FAMILY_TREE } from '../data/initialFamilyTree';
 
-const STORAGE_KEY = 'family_tree_yehuda_v1';
+const STORAGE_KEY = 'family_tree_yehuda_v2';
+const LEGACY_STORAGE_KEY = 'family_tree_yehuda_v1';
 
 export type SaveStatus = 'saved' | 'saving' | 'error' | 'offline';
 
@@ -17,17 +18,24 @@ export const EMPTY_TREE: FamilyTreeData = {
 
 export const INITIAL_TREE: FamilyTreeData = INITIAL_FAMILY_TREE;
 
-// Load initial tree with intelligent two-way synchronization between server and localStorage
+// Load initial tree with intelligent multi-source synchronization
 export async function loadFamilyTree(): Promise<FamilyTreeData> {
   let serverData: FamilyTreeData | null = null;
   let localData: FamilyTreeData | null = null;
+  const initialCount = INITIAL_TREE?.persons ? Object.keys(INITIAL_TREE.persons).length : 0;
 
-  // 1. Try reading from server
+  // 1. Always attempt fetching the freshest tree from the server first with cache busting!
   try {
-    const res = await fetch('/api/tree');
+    const res = await fetch(`/api/tree?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
     if (res.ok) {
       const data = await res.json();
-      if (data && typeof data === 'object' && data.persons) {
+      if (data && typeof data === 'object' && data.persons && Object.keys(data.persons).length > 0) {
         serverData = data;
       }
     }
@@ -35,11 +43,14 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
     console.warn('Could not fetch tree from server:', err);
   }
 
-  // 2. Try reading from localStorage
+  // 2. Try reading from localStorage (v2, then legacy v1)
   try {
-    const local = localStorage.getItem(STORAGE_KEY);
+    const local = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (local) {
-      localData = JSON.parse(local);
+      const parsed = JSON.parse(local);
+      if (parsed && parsed.persons && typeof parsed.persons === 'object') {
+        localData = parsed;
+      }
     }
   } catch (err) {
     console.error('Error loading from localStorage:', err);
@@ -48,9 +59,10 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
   const serverCount = serverData?.persons ? Object.keys(serverData.persons).length : 0;
   const localCount = localData?.persons ? Object.keys(localData.persons).length : 0;
 
-  // Case 1: Server has data, but local is empty or server has more up-to-date data
+  // Case 1: Server has data (Server is the Master Database!)
   if (serverData && serverCount > 0) {
     if (!localData || localCount === 0) {
+      // First time on this device: store server data into localStorage and return
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
       } catch (e) {
@@ -59,16 +71,16 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
       return serverData;
     }
 
-    // Both have data: Compare timestamps and count
+    // Both server and local have data:
     const serverTime = serverData.metadata?.lastUpdated ? new Date(serverData.metadata.lastUpdated).getTime() : 0;
     const localTime = localData.metadata?.lastUpdated ? new Date(localData.metadata.lastUpdated).getTime() : 0;
 
-    if (localCount > serverCount || (localTime > serverTime && localCount >= serverCount)) {
-      // Local is newer/has more data (e.g. edited on mobile while offline) -> Push local to server!
+    // Only if local was edited strictly NEWER than the server (e.g. offline edits on this specific device)
+    if (localTime > serverTime && localCount >= serverCount) {
       saveFamilyTree(localData);
       return localData;
     } else {
-      // Server is newer or equal -> sync to local storage
+      // Server is newer or equal -> sync down to local storage and display server data!
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
       } catch (e) {
@@ -78,20 +90,21 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
     }
   }
 
-  // Case 2: Server is empty (0 persons), but Local has data (> 0 persons)
-  // This happens when data was entered on a phone and now needs to be saved to the database!
+  // Case 2: Server not reachable (offline device) but local has data
   if (localData && localCount > 0) {
-    // Automatically push phone data to the server database!
-    saveFamilyTree(localData);
     return localData;
   }
 
-  // Case 3: Neither server nor localStorage has data (e.g. running statically on GitHub Pages for the first time)
-  if (INITIAL_TREE && Object.keys(INITIAL_TREE.persons).length > 0) {
+  // Case 3: Initial tree bundled in app (222 persons)
+  if (INITIAL_TREE && initialCount > 0) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_TREE));
     } catch (e) {
       console.warn('Could not cache initial tree:', e);
+    }
+    // Try pushing to server if server is empty or accessible
+    if (serverCount === 0) {
+      saveFamilyTree(INITIAL_TREE);
     }
     return INITIAL_TREE;
   }
