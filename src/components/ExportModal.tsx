@@ -178,7 +178,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         // Full Name text (Right to left)
         ctx.fillStyle = '#1c1917';
-        ctx.font = 'bold 13px "Frank Ruhl Libre", Georgia, serif';
+        ctx.font = 'bold 15px "Rubik", "Heebo", sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
 
@@ -194,7 +194,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           if (metrics.width > maxWidth && n > 0) {
             ctx.fillText(line.trim(), avatarX - 8, textY);
             line = words[n] + ' ';
-            textY += 16;
+            textY += 18;
           } else {
             line = testLine;
           }
@@ -202,9 +202,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         ctx.fillText(line.trim(), avatarX - 8, textY);
 
         // Dates
-        textY += 18;
+        textY += 20;
         ctx.fillStyle = '#78716c';
-        ctx.font = '10px "Rubik", sans-serif';
+        ctx.font = '11px "Rubik", sans-serif';
         const dateText = [
           formatDisplayDate(person.birthDate, person.isBirthApproximate),
           formatDisplayDate(person.deathDate, person.isDeathApproximate),
@@ -224,21 +224,30 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       } else {
         // Compact Views
         ctx.fillStyle = '#1c1917';
-        ctx.font = '500 12px "Rubik", sans-serif';
+        ctx.font = 'bold 14px "Rubik", "Heebo", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+
+        const hasDates = Boolean(person.birthDate || person.deathDate);
 
         ctx.fillText(
           person.fullName,
           node.x + node.width / 2,
-          node.y + (person.birthDate ? node.height / 2 - 6 : node.height / 2)
+          node.y + (hasDates ? node.height / 2 - 8 : node.height / 2)
         );
 
-        if (person.birthDate) {
-          ctx.fillStyle = '#a8a29e';
+        if (hasDates) {
+          ctx.fillStyle = '#78716c';
           ctx.font = '10px "Rubik", sans-serif';
+          const datesStr = [
+            formatDisplayDate(person.birthDate, person.isBirthApproximate),
+            formatDisplayDate(person.deathDate, person.isDeathApproximate),
+          ]
+            .filter(Boolean)
+            .join(' – ');
+
           ctx.fillText(
-            person.birthDate.slice(0, 4),
+            datesStr,
             node.x + node.width / 2,
             node.y + node.height / 2 + 8
           );

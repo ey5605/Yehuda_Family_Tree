@@ -91,28 +91,28 @@ export function computeTreeLayout(
   let dims: Dimensions;
   if (viewType === 'detailed-vertical') {
     dims = {
-      nodeWidth: 200,
-      nodeHeight: 120,
-      hGap: 40,
-      vGap: 75,
+      nodeWidth: 216,
+      nodeHeight: 124,
+      hGap: 36,
+      vGap: 70,
       spouseGap: 24,
     };
   } else if (viewType === 'compact-vertical') {
     dims = {
-      nodeWidth: 150,
-      nodeHeight: 50,
-      hGap: 28,
-      vGap: 60,
-      spouseGap: 20,
+      nodeWidth: 176,
+      nodeHeight: 62,
+      hGap: 18,
+      vGap: 48,
+      spouseGap: 16,
     };
   } else {
-    // compact-horizontal
+    // compact-horizontal (RTL)
     dims = {
-      nodeWidth: 150,
-      nodeHeight: 46,
-      hGap: 65,
-      vGap: 24,
-      spouseGap: 16,
+      nodeWidth: 180,
+      nodeHeight: 56,
+      hGap: 46,
+      vGap: 16,
+      spouseGap: 14,
     };
   }
 
@@ -233,17 +233,6 @@ function computeVerticalTreeLayout(
       }
     }
 
-    // Arrange spouses around primary person:
-    // If multiple spouses: [Spouse 1] - [Primary Person] - [Spouse 2] ...
-    // This places previous and new spouses adjacent to the primary person!
-    const orderedSpouses: Person[] = [];
-    if (allSpouses.length === 1) {
-      orderedSpouses.push(allSpouses[0]);
-    } else if (allSpouses.length >= 2) {
-      // Spouse 0 on left of primary, Spouse 1+ on right
-      orderedSpouses.push(...allSpouses);
-    }
-
     // Partition all children of this person by their union (by spouse)
     const allChildrenEntries = getChildren(data, person.id);
     const unionMap = new Map<string | null, FamilySubtree[]>();
@@ -267,9 +256,25 @@ function computeVerticalTreeLayout(
       }
     }
 
-    // Build UnionGroup objects
+    // Sort spouses cleanly:
+    // If multiple spouses, place previous marriage / spouse with children on the right (higher X, RTL first),
+    // and current partner on the left, with the primary person in the center!
+    const sortedSpouses = [...allSpouses].sort((a, b) => {
+      const aCount = (unionMap.get(a.id) || []).length;
+      const bCount = (unionMap.get(b.id) || []).length;
+      if (aCount !== bCount) {
+        return aCount - bCount; // spouse with 0 children to left (sp0), spouse with children to right (sp1)
+      }
+      const bA = a.birthDate || '9999';
+      const bB = b.birthDate || '9999';
+      return bB.localeCompare(bA);
+    });
+
+    const orderedSpouses: Person[] = sortedSpouses;
+
+    // Build UnionGroup objects in the ordered sequence
     const unions: UnionGroup[] = [];
-    for (const sp of allSpouses) {
+    for (const sp of orderedSpouses) {
       const childSubs = unionMap.get(sp.id) || [];
       let uWidth = 0;
       if (childSubs.length > 0) {
@@ -427,42 +432,46 @@ function computeVerticalTreeLayout(
 
     // Place Children Subtrees for each union
     if (!tree.isCollapsed) {
-      const allChildrenSubtrees = tree.unions.flatMap(u => u.childrenSubtrees);
-      if (allChildrenSubtrees.length > 0) {
-        const totalChildrenWidth =
-          allChildrenSubtrees.reduce((acc, c) => acc + c.width, 0) +
-          (allChildrenSubtrees.length - 1) * dims.hGap;
-
-        let currentChildX = leftX + (tree.width - totalChildrenWidth) / 2;
+      const activeUnions = tree.unions.filter(u => u.childrenSubtrees.length > 0);
+      if (activeUnions.length > 0) {
         const busY = nodeY + dims.nodeHeight + dims.vGap / 2;
 
-        for (const union of tree.unions) {
-          if (union.childrenSubtrees.length === 0) continue;
-
+        for (const union of activeUnions) {
           // Determine anchor for this union
-          let unionAnchorX = pPos.x + dims.nodeWidth / 2;
+          let unionAnchorX: number;
+          let stemStartY: number;
+
           if (union.spouse) {
             const sPos = adultPositions.get(union.spouse.id);
             if (sPos) {
-              if (sPos.x < pPos.x) {
-                unionAnchorX = (sPos.x + dims.nodeWidth + pPos.x) / 2;
-              } else {
-                unionAnchorX = (pPos.x + dims.nodeWidth + sPos.x) / 2;
-              }
+              const leftNodeX = Math.min(pPos.x, sPos.x);
+              const rightNodeX = Math.max(pPos.x, sPos.x);
+              const mStartX = leftNodeX + dims.nodeWidth;
+              const mEndX = rightNodeX;
+              unionAnchorX = (mStartX + mEndX) / 2;
+              stemStartY = nodeY + dims.nodeHeight / 2; // directly from the horizontal marriage line!
+            } else {
+              unionAnchorX = pPos.x + dims.nodeWidth / 2;
+              stemStartY = nodeY + dims.nodeHeight;
             }
+          } else {
+            // Solo / single-parent children
+            unionAnchorX = pPos.x + dims.nodeWidth / 2;
+            stemStartY = nodeY + dims.nodeHeight;
           }
 
-          // Stem down from union to bus bar
-          connectors.push({
-            id: `stem-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
-            type: 'child',
-            path: `M ${unionAnchorX} ${nodeY + dims.nodeHeight} L ${unionAnchorX} ${busY}`,
-            fromX: unionAnchorX,
-            fromY: nodeY + dims.nodeHeight,
-            toX: unionAnchorX,
-            toY: busY,
-          });
+          // Calculate start X for this union's children centered directly under unionAnchorX
+          const uChildrenWidth =
+            union.childrenSubtrees.reduce((acc, c) => acc + c.width, 0) +
+            (union.childrenSubtrees.length - 1) * dims.hGap;
 
+          let uStartChildX = unionAnchorX - uChildrenWidth / 2;
+          uStartChildX = Math.max(leftX, uStartChildX);
+          if (uStartChildX + uChildrenWidth > leftX + tree.width) {
+            uStartChildX = Math.max(leftX, leftX + tree.width - uChildrenWidth);
+          }
+
+          let currentChildX = uStartChildX;
           const childMidpoints: number[] = [];
 
           for (const childSub of union.childrenSubtrees) {
@@ -490,6 +499,17 @@ function computeVerticalTreeLayout(
 
             currentChildX += childSub.width + dims.hGap;
           }
+
+          // Stem down from marriage line / parent to bus bar
+          connectors.push({
+            id: `stem-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
+            type: 'child',
+            path: `M ${unionAnchorX} ${stemStartY} L ${unionAnchorX} ${busY}`,
+            fromX: unionAnchorX,
+            fromY: stemStartY,
+            toX: unionAnchorX,
+            toY: busY,
+          });
 
           // Bus bar for this union's children
           if (childMidpoints.length > 0) {
@@ -674,8 +694,23 @@ function computeHorizontalRTLTreeLayout(
       }
     }
 
+    // Sort spouses cleanly so that previous marriage / spouse with children is placed on bottom (sp1),
+    // and current partner on top (sp0), with primary person in the center!
+    const sortedSpouses = [...allSpouses].sort((a, b) => {
+      const aCount = (unionMap.get(a.id) || []).length;
+      const bCount = (unionMap.get(b.id) || []).length;
+      if (aCount !== bCount) {
+        return aCount - bCount;
+      }
+      const bA = a.birthDate || '9999';
+      const bB = b.birthDate || '9999';
+      return bB.localeCompare(bA);
+    });
+
+    const orderedSpouses: Person[] = sortedSpouses;
+
     const unions: HUnionGroup[] = [];
-    for (const sp of allSpouses) {
+    for (const sp of orderedSpouses) {
       const childSubs = unionMap.get(sp.id) || [];
       let uHeight = 0;
       if (childSubs.length > 0) {
@@ -713,7 +748,7 @@ function computeHorizontalRTLTreeLayout(
 
     return {
       person,
-      orderedSpouses: allSpouses,
+      orderedSpouses,
       unions,
       height,
       generation: personGen,
@@ -738,88 +773,175 @@ function computeHorizontalRTLTreeLayout(
 
     const adultPositions = new Map<string, { x: number; y: number }>();
 
-    // Primary Person
-    let currY = adultsStartY;
-    adultPositions.set(tree.person.id, { x: nodeX, y: currY });
+    if (tree.orderedSpouses.length <= 1) {
+      let currY = adultsStartY;
+      adultPositions.set(tree.person.id, { x: nodeX, y: currY });
 
-    if (!placedPersons.has(tree.person.id)) {
-      nodes.push({
-        id: tree.person.id,
-        uniqueKey: `${tree.person.id}-${nodes.length}`,
-        person: tree.person,
-        x: nodeX,
-        y: currY,
-        width: dims.nodeWidth,
-        height: dims.nodeHeight,
-        generation: tree.generation,
-        isCollapsed: tree.isCollapsed,
-        descendantCount: tree.descendantCount,
-        spouses: tree.orderedSpouses,
-      });
-      placedPersons.add(tree.person.id);
-    }
-
-    currY += dims.nodeHeight + dims.spouseGap;
-
-    // Spouses placed vertically adjacent
-    for (const spouse of tree.orderedSpouses) {
-      adultPositions.set(spouse.id, { x: nodeX, y: currY });
-
-      if (!placedPersons.has(spouse.id)) {
+      if (!placedPersons.has(tree.person.id)) {
         nodes.push({
-          id: spouse.id,
-          uniqueKey: `${spouse.id}-${nodes.length}`,
-          person: spouse,
+          id: tree.person.id,
+          uniqueKey: `${tree.person.id}-${nodes.length}`,
+          person: tree.person,
           x: nodeX,
           y: currY,
           width: dims.nodeWidth,
           height: dims.nodeHeight,
           generation: tree.generation,
           isCollapsed: tree.isCollapsed,
+          descendantCount: tree.descendantCount,
+          spouses: tree.orderedSpouses,
         });
-        placedPersons.add(spouse.id);
+        placedPersons.add(tree.person.id);
       }
 
-      // Vertical connector between spouses
-      const pPos = adultPositions.get(tree.person.id)!;
+      if (tree.orderedSpouses.length === 1) {
+        const spouse = tree.orderedSpouses[0];
+        currY += dims.nodeHeight + dims.spouseGap;
+        adultPositions.set(spouse.id, { x: nodeX, y: currY });
+
+        if (!placedPersons.has(spouse.id)) {
+          nodes.push({
+            id: spouse.id,
+            uniqueKey: `${spouse.id}-${nodes.length}`,
+            person: spouse,
+            x: nodeX,
+            y: currY,
+            width: dims.nodeWidth,
+            height: dims.nodeHeight,
+            generation: tree.generation,
+            isCollapsed: tree.isCollapsed,
+          });
+          placedPersons.add(spouse.id);
+        }
+
+        // Vertical connector between spouses
+        connectors.push({
+          id: `h-rel-${tree.person.id}-${spouse.id}`,
+          type: 'marriage',
+          path: `M ${nodeX + dims.nodeWidth / 2} ${adultsStartY + dims.nodeHeight} L ${nodeX + dims.nodeWidth / 2} ${currY}`,
+          fromX: nodeX + dims.nodeWidth / 2,
+          fromY: adultsStartY + dims.nodeHeight,
+          toX: nodeX + dims.nodeWidth / 2,
+          toY: currY,
+        });
+      }
+    } else {
+      // 2 or more spouses: Primary person in the middle!
+      // sp0 at adultsStartY, Primary in center, sp1 below
+      const sp0 = tree.orderedSpouses[0];
+      const sp0Y = adultsStartY;
+      adultPositions.set(sp0.id, { x: nodeX, y: sp0Y });
+      if (!placedPersons.has(sp0.id)) {
+        nodes.push({
+          id: sp0.id,
+          uniqueKey: `${sp0.id}-${nodes.length}`,
+          person: sp0,
+          x: nodeX,
+          y: sp0Y,
+          width: dims.nodeWidth,
+          height: dims.nodeHeight,
+          generation: tree.generation,
+          isCollapsed: tree.isCollapsed,
+        });
+        placedPersons.add(sp0.id);
+      }
+
+      const primaryY = sp0Y + dims.nodeHeight + dims.spouseGap;
+      adultPositions.set(tree.person.id, { x: nodeX, y: primaryY });
+      if (!placedPersons.has(tree.person.id)) {
+        nodes.push({
+          id: tree.person.id,
+          uniqueKey: `${tree.person.id}-${nodes.length}`,
+          person: tree.person,
+          x: nodeX,
+          y: primaryY,
+          width: dims.nodeWidth,
+          height: dims.nodeHeight,
+          generation: tree.generation,
+          isCollapsed: tree.isCollapsed,
+          descendantCount: tree.descendantCount,
+          spouses: tree.orderedSpouses,
+        });
+        placedPersons.add(tree.person.id);
+      }
+
+      // Vertical connector between sp0 and primary
       connectors.push({
-        id: `h-rel-${tree.person.id}-${spouse.id}`,
+        id: `h-rel-${tree.person.id}-${sp0.id}`,
         type: 'marriage',
-        path: `M ${nodeX + dims.nodeWidth / 2} ${pPos.y + dims.nodeHeight} L ${nodeX + dims.nodeWidth / 2} ${currY}`,
+        path: `M ${nodeX + dims.nodeWidth / 2} ${sp0Y + dims.nodeHeight} L ${nodeX + dims.nodeWidth / 2} ${primaryY}`,
         fromX: nodeX + dims.nodeWidth / 2,
-        fromY: pPos.y + dims.nodeHeight,
+        fromY: sp0Y + dims.nodeHeight,
         toX: nodeX + dims.nodeWidth / 2,
-        toY: currY,
+        toY: primaryY,
       });
 
-      currY += dims.nodeHeight + dims.spouseGap;
+      let nextY = primaryY + dims.nodeHeight + dims.spouseGap;
+      for (let i = 1; i < tree.orderedSpouses.length; i++) {
+        const sp = tree.orderedSpouses[i];
+        adultPositions.set(sp.id, { x: nodeX, y: nextY });
+        if (!placedPersons.has(sp.id)) {
+          nodes.push({
+            id: sp.id,
+            uniqueKey: `${sp.id}-${nodes.length}`,
+            person: sp,
+            x: nodeX,
+            y: nextY,
+            width: dims.nodeWidth,
+            height: dims.nodeHeight,
+            generation: tree.generation,
+            isCollapsed: tree.isCollapsed,
+          });
+          placedPersons.add(sp.id);
+        }
+
+        // Vertical connector between primary and this spouse
+        connectors.push({
+          id: `h-rel-${tree.person.id}-${sp.id}`,
+          type: 'marriage',
+          path: `M ${nodeX + dims.nodeWidth / 2} ${primaryY + dims.nodeHeight} L ${nodeX + dims.nodeWidth / 2} ${nextY}`,
+          fromX: nodeX + dims.nodeWidth / 2,
+          fromY: primaryY + dims.nodeHeight,
+          toX: nodeX + dims.nodeWidth / 2,
+          toY: nextY,
+        });
+
+        nextY += dims.nodeHeight + dims.spouseGap;
+      }
     }
 
     // Children placed to the LEFT
     if (!tree.isCollapsed) {
-      const allChildrenSubtrees = tree.unions.flatMap(u => u.childrenSubtrees);
-      if (allChildrenSubtrees.length > 0) {
-        const totalChildrenHeight =
-          allChildrenSubtrees.reduce((acc, c) => acc + c.height, 0) +
-          (allChildrenSubtrees.length - 1) * dims.vGap;
-
-        let currentChildY = topY + (tree.height - totalChildrenHeight) / 2;
+      const activeUnions = tree.unions.filter(u => u.childrenSubtrees.length > 0);
+      if (activeUnions.length > 0) {
         const busX = nodeX - dims.hGap / 2;
 
-        for (const union of tree.unions) {
-          if (union.childrenSubtrees.length === 0) continue;
-
+        for (const union of activeUnions) {
           const pPos = adultPositions.get(tree.person.id)!;
-          let anchorY = pPos.y + dims.nodeHeight / 2;
+          let anchorY: number;
+
           if (union.spouse) {
             const sPos = adultPositions.get(union.spouse.id);
             if (sPos) {
-              if (sPos.y < pPos.y) {
-                anchorY = (sPos.y + dims.nodeHeight + pPos.y) / 2;
-              } else {
-                anchorY = (pPos.y + dims.nodeHeight + sPos.y) / 2;
-              }
+              const topNodeY = Math.min(pPos.y, sPos.y) + dims.nodeHeight;
+              const botNodeY = Math.max(pPos.y, sPos.y);
+              anchorY = (topNodeY + botNodeY) / 2; // directly from vertical marriage line!
+            } else {
+              anchorY = pPos.y + dims.nodeHeight / 2;
             }
+          } else {
+            // Solo children
+            anchorY = pPos.y + dims.nodeHeight / 2;
+          }
+
+          const uChildrenHeight =
+            union.childrenSubtrees.reduce((acc, c) => acc + c.height, 0) +
+            (union.childrenSubtrees.length - 1) * dims.vGap;
+
+          let uStartChildY = anchorY - uChildrenHeight / 2;
+          uStartChildY = Math.max(topY, uStartChildY);
+          if (uStartChildY + uChildrenHeight > topY + tree.height) {
+            uStartChildY = Math.max(topY, topY + tree.height - uChildrenHeight);
           }
 
           // Stem to bus bar (leftward)
@@ -833,6 +955,7 @@ function computeHorizontalRTLTreeLayout(
             toY: anchorY,
           });
 
+          let currentChildY = uStartChildY;
           const childMidpointsY: number[] = [];
 
           for (const childSub of union.childrenSubtrees) {
@@ -907,8 +1030,8 @@ function computeHorizontalRTLTreeLayout(
     }
   }
 
-  // Right edge baseline X for generation 0
-  const baseStartX = maxGen * (dims.nodeWidth + dims.hGap) + 100;
+  // Right edge baseline X for generation 0 (stable and deterministic)
+  const baseStartX = maxGen * (dims.nodeWidth + dims.hGap) + 50;
   let currentGroupTop = 50;
 
   for (const root of rootGroups) {
@@ -923,23 +1046,6 @@ function computeHorizontalRTLTreeLayout(
     const subtree = buildHSubtree(person);
     placeHSubtree(subtree, currentGroupTop, baseStartX);
     currentGroupTop += subtree.height + dims.vGap * 2;
-  }
-
-  // Normalize bounds so minX >= 50 and minY >= 50
-  if (nodes.length > 0) {
-    const rawMinX = Math.min(...nodes.map(n => n.x));
-    const shiftX = 50 - rawMinX;
-    for (const node of nodes) {
-      node.x += shiftX;
-    }
-    for (const conn of connectors) {
-      conn.fromX += shiftX;
-      conn.toX += shiftX;
-      conn.path = conn.path.replace(/([MLQ])\s*(-?\d+(\.\d+)?)\s*(-?\d+(\.\d+)?)/g, (_, cmd, x, __, y) => {
-        const newX = parseFloat(x) + shiftX;
-        return `${cmd} ${newX} ${y}`;
-      });
-    }
   }
 
   return calculateBounds(nodes, connectors);

@@ -69,6 +69,18 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   const hasMovedRef = useRef(false);
   const hasFittedInitialRef = useRef(false);
 
+  // Synchronous refs for layout and viewType to keep callbacks pure, stable and free of spurious re-renders
+  const layoutRef = useRef(layout);
+  const viewTypeRef = useRef(viewType);
+  const lastFitTriggerRef = useRef(fitTrigger);
+  const lastViewTypeRef = useRef(viewType);
+  const toggledNodeAnchorRef = useRef<{ id: string; oldX: number; oldY: number } | null>(null);
+
+  useEffect(() => {
+    layoutRef.current = layout;
+    viewTypeRef.current = viewType;
+  }, [layout, viewType]);
+
   // Sync refs whenever state updates
   useEffect(() => {
     scaleRef.current = scale;
@@ -104,9 +116,13 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     setPosition({ x: newX, y: newY });
   }, []);
 
-  // Fit tree to container, accurately centered on the bounding box of the tree nodes
+  // Fit and center tree to container.
+  // For wide trees, focus intelligently on the primary ancestral root and its core branch at a clean readable scale,
+  // so the user immediately sees the family cards clearly instead of blank margins or microscopic dots.
   const fitToScreen = useCallback((smooth = false) => {
-    if (!containerRef.current || layout.nodes.length === 0) return;
+    const currentLayout = layoutRef.current;
+    const currentViewType = viewTypeRef.current;
+    if (!containerRef.current || currentLayout.nodes.length === 0) return;
 
     const container = containerRef.current;
     const cw = container.clientWidth;
@@ -119,7 +135,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     let maxX = -Infinity;
     let maxY = -Infinity;
 
-    for (const node of layout.nodes) {
+    for (const node of currentLayout.nodes) {
       minX = Math.min(minX, node.x);
       minY = Math.min(minY, node.y);
       maxX = Math.max(maxX, node.x + node.width);
@@ -132,22 +148,59 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     const th = maxY - minY;
     if (tw <= 0 || th <= 0) return;
 
-    // Margins around tree so nodes don't touch screen edges
-    const padX = Math.max(cw * 0.07, 44);
-    const padY = Math.max(ch * 0.07, 44);
+    // Find the primary anchor node (e.g. main Yehuda root or node with highest descendants)
+    const roots = currentLayout.nodes.filter(n => n.generation === 0);
+    let primaryRoot = roots[0] || currentLayout.nodes[0];
+    let maxDesc = -1;
+    for (const r of roots) {
+      if ((r.descendantCount || 0) > maxDesc) {
+        maxDesc = r.descendantCount || 0;
+        primaryRoot = r;
+      }
+    }
 
-    const scaleX = (cw - padX * 2) / tw;
-    const scaleY = (ch - padY * 2) / th;
+    // Also check if there is a primary person with "יהודה" to center around
+    const primaryYehuda = currentLayout.nodes.find(n => n.id === 'p0004' || (n.person.fullName && n.person.fullName.includes('יהודה')));
+    const focusNode = primaryYehuda || primaryRoot;
 
-    const fitScale = Math.min(scaleX, scaleY);
-    const newScale = Math.min(Math.max(fitScale, 0.15), 1.0);
+    // If whole tree fits comfortably at a readable scale (>= 0.45), fit whole bounding box.
+    // Otherwise, position the focal root in viewport at a comfortable, fully-legible zoom!
+    const padX = Math.max(cw * 0.06, 36);
+    const padY = Math.max(ch * 0.06, 36);
+    const fitScaleX = (cw - padX * 2) / tw;
+    const fitScaleY = (ch - padY * 2) / th;
+    const wholeTreeFitScale = Math.min(fitScaleX, fitScaleY);
 
-    // Exact geometric center of the tree
-    const treeCenterX = minX + tw / 2;
-    const treeCenterY = minY + th / 2;
+    let newScale: number;
+    let centerX: number;
+    let centerY: number;
 
-    const centerX = cw / 2 - treeCenterX * newScale;
-    const centerY = ch / 2 - treeCenterY * newScale;
+    if (wholeTreeFitScale >= 0.45) {
+      // Small or medium tree fits completely on screen with legible text
+      newScale = Math.min(wholeTreeFitScale, 1.0);
+      const treeCenterX = minX + tw / 2;
+      const treeCenterY = minY + th / 2;
+      centerX = cw / 2 - treeCenterX * newScale;
+      centerY = ch / 2 - treeCenterY * newScale;
+    } else {
+      // Large family tree: Focus on the key family branch at a crystal clear, readable zoom
+      if (currentViewType === 'compact-horizontal') {
+        newScale = Math.min(Math.max((cw * 0.75) / 1400, 0.48), 0.75);
+        // In horizontal RTL: Ancestors are on the right, descendants branch left
+        const targetRightX = focusNode.x + focusNode.width;
+        centerX = cw - Math.max(cw * 0.1, 70) - targetRightX * newScale;
+        centerY = ch / 2 - (focusNode.y + focusNode.height / 2) * newScale;
+      } else {
+        // Vertical views (Detailed or Compact vertical):
+        // Center horizontally on the primary branch, and show generation 0/1/2 nicely from top
+        newScale = Math.min(Math.max((ch * 0.75) / 950, 0.48), 0.75);
+        const focusCenterX = focusNode.x + focusNode.width / 2;
+        centerX = cw / 2 - focusCenterX * newScale;
+        // Position Generation 0 near the top with clean padding
+        const topGenY = primaryRoot ? primaryRoot.y : minY;
+        centerY = Math.max(ch * 0.1, 60) - topGenY * newScale;
+      }
+    }
 
     if (smooth) {
       setIsSmoothTransition(true);
@@ -160,35 +213,70 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     posRef.current = { x: centerX, y: centerY };
     setScale(newScale);
     setPosition({ x: centerX, y: centerY });
-  }, [layout.nodes]);
+  }, []);
 
-  // Center tree on initial load and whenever fitTrigger changes
+  // Initial fit: runs ONLY ONCE when the canvas is first mounted and populated
   useEffect(() => {
     if (!containerRef.current || layout.nodes.length === 0) return;
 
-    const timer = setTimeout(() => {
-      fitToScreen(false);
-      hasFittedInitialRef.current = true;
-    }, 40);
+    if (!hasFittedInitialRef.current) {
+      const timer = setTimeout(() => {
+        fitToScreen(false);
+        hasFittedInitialRef.current = true;
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [layout.nodes.length, fitToScreen]);
 
-    return () => clearTimeout(timer);
-  }, [layout.nodes.length, fitTrigger, fitToScreen]);
-
-  // Re-fit when view type changes
+  // Re-fit ONLY when user explicitly triggers fit via button / import
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fitToScreen(false);
-    }, 40);
-    return () => clearTimeout(timer);
+    if (fitTrigger !== lastFitTriggerRef.current) {
+      lastFitTriggerRef.current = fitTrigger;
+      if (hasFittedInitialRef.current) {
+        fitToScreen(true);
+      }
+    }
+  }, [fitTrigger, fitToScreen]);
+
+  // Re-fit ONLY when user explicitly switches view type
+  useEffect(() => {
+    if (viewType !== lastViewTypeRef.current) {
+      lastViewTypeRef.current = viewType;
+      if (hasFittedInitialRef.current) {
+        fitToScreen(false);
+      }
+    }
   }, [viewType, fitToScreen]);
 
-  // ResizeObserver to ensure fit once container layout is resolved
+  // Anchor stabilization: when user collapses or expands a branch, pin the toggled node
+  // at the exact screen coordinates so the screen never jumps away from where the user is looking
+  useEffect(() => {
+    if (toggledNodeAnchorRef.current) {
+      const anchor = toggledNodeAnchorRef.current;
+      toggledNodeAnchorRef.current = null;
+      const newNode = layout.nodes.find(n => n.id === anchor.id);
+      if (newNode) {
+        const dx = newNode.x - anchor.oldX;
+        const dy = newNode.y - anchor.oldY;
+        if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+          const newPos = {
+            x: posRef.current.x - dx * scaleRef.current,
+            y: posRef.current.y - dy * scaleRef.current,
+          };
+          posRef.current = newPos;
+          setPosition(newPos);
+        }
+      }
+    }
+  }, [layout]);
+
+  // ResizeObserver to ensure initial fit once container layout is resolved
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver(entries => {
       for (const entry of entries) {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
-          if (!hasFittedInitialRef.current && layout.nodes.length > 0) {
+          if (!hasFittedInitialRef.current && layoutRef.current.nodes.length > 0) {
             fitToScreen(false);
             hasFittedInitialRef.current = true;
           }
@@ -197,32 +285,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [layout.nodes.length, fitToScreen]);
-
-  // Center on selected person if requested
-  useEffect(() => {
-    if (!selectedPersonId || !containerRef.current) return;
-    const targetNode = layout.nodes.find(n => n.id === selectedPersonId);
-    if (!targetNode) return;
-
-    const cw = containerRef.current.clientWidth;
-    const ch = containerRef.current.clientHeight;
-
-    const targetX = targetNode.x + targetNode.width / 2;
-    const targetY = targetNode.y + targetNode.height / 2;
-
-    const curScale = scaleRef.current;
-    const targetPos = {
-      x: cw / 2 - targetX * curScale,
-      y: ch / 2 - targetY * curScale,
-    };
-
-    setIsSmoothTransition(true);
-    setTimeout(() => setIsSmoothTransition(false), 320);
-
-    posRef.current = targetPos;
-    setPosition(targetPos);
-  }, [selectedPersonId, layout.nodes]);
+  }, [fitToScreen]);
 
   // Non-passive wheel listener attached directly to container to prevent browser scroll/pinch
   useEffect(() => {
@@ -622,7 +685,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     {/* Name & Dates */}
                     <div className="min-w-0 flex-1">
                       <div
-                        className="font-hebrew-serif font-bold text-stone-900 text-sm leading-tight text-wrap"
+                        className="font-bold text-stone-900 text-lg sm:text-xl leading-snug break-words tracking-tight"
                         title={person.fullName}
                       >
                         {person.fullName}
@@ -674,13 +737,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Compact Vertical View Card */}
               {viewType === 'compact-vertical' && (
                 <div className="h-full px-2.5 py-1.5 flex flex-col justify-center text-center">
-                  <div className="font-medium text-xs text-stone-900 leading-snug truncate" title={person.fullName}>
+                  <div className="font-bold text-base sm:text-[17px] text-stone-900 leading-snug truncate" title={person.fullName}>
                     {person.fullName}
                   </div>
-                  {person.birthDate && (
-                    <div className="text-[10px] text-stone-400 font-mono mt-0.5">
-                      {person.birthDate.slice(0, 4)}
-                      {person.deathDate ? ` - ${person.deathDate.slice(0, 4)}` : ''}
+                  {(person.birthDate || person.deathDate) && (
+                    <div className="text-[11px] text-stone-500 font-mono mt-0.5 truncate">
+                      {person.birthDate ? formatDisplayDate(person.birthDate, person.isBirthApproximate) : ''}
+                      {person.birthDate && person.deathDate ? ' – ' : ''}
+                      {person.deathDate ? formatDisplayDate(person.deathDate, person.isDeathApproximate) : ''}
                     </div>
                   )}
                 </div>
@@ -689,12 +753,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Compact Horizontal View Card */}
               {viewType === 'compact-horizontal' && (
                 <div className="h-full px-3 py-1 flex items-center justify-between text-right">
-                  <span className="font-medium text-xs text-stone-900 truncate flex-1" title={person.fullName}>
+                  <span className="font-bold text-base sm:text-[17px] text-stone-900 truncate flex-1 ml-1.5" title={person.fullName}>
                     {person.fullName}
                   </span>
-                  {person.birthDate && (
-                    <span className="text-[10px] text-stone-400 font-mono mr-1.5 shrink-0">
-                      {person.birthDate.slice(0, 4)}
+                  {(person.birthDate || person.deathDate) && (
+                    <span className="text-[10px] text-stone-500 font-mono shrink-0 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">
+                      {person.birthDate ? formatDisplayDate(person.birthDate, person.isBirthApproximate) : ''}
+                      {person.birthDate && person.deathDate ? ' – ' : ''}
+                      {person.deathDate ? formatDisplayDate(person.deathDate, person.isDeathApproximate) : ''}
                     </span>
                   )}
                 </div>
@@ -706,6 +772,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   type="button"
                   onClick={e => {
                     e.stopPropagation();
+                    toggledNodeAnchorRef.current = { id: node.id, oldX: node.x, oldY: node.y };
                     onToggleCollapse(node.id);
                   }}
                   title={node.isCollapsed ? `הצג ${node.descendantCount} צאצאים` : 'הסתר את כל הדורות מתחת'}
