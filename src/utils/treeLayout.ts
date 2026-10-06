@@ -92,9 +92,9 @@ export function computeTreeLayout(
   if (viewType === 'detailed-vertical') {
     dims = {
       nodeWidth: 244,
-      nodeHeight: 140,
+      nodeHeight: 156,
       hGap: 36,
-      vGap: 96,
+      vGap: 110,
       spouseGap: 24,
     };
   } else if (viewType === 'compact-vertical') {

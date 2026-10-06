@@ -676,8 +676,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {viewType === 'detailed-vertical' && (
                 <div className="h-full p-2.5 flex flex-col justify-between">
                   <div className="flex items-center gap-3">
-                    {/* Avatar */}
-                    <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
+                    {/* Avatar (64x64) */}
+                    <div className="w-[64px] h-[64px] rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
                       {person.photoUrl ? (
                         <img
                           src={person.photoUrl}
@@ -686,20 +686,20 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <User className="w-6 h-6 text-stone-400" />
+                        <User className="w-8 h-8 text-stone-400" />
                       )}
                     </div>
 
                     {/* Name & Dates */}
                     <div className="min-w-0 flex-1">
                       <div
-                        className="font-bold text-stone-900 text-2xl sm:text-[26px] leading-tight break-words tracking-tight"
+                        className="font-bold text-stone-900 text-[32px] sm:text-[34px] leading-tight break-words tracking-tight"
                         title={person.fullName}
                       >
                         {person.fullName}
                       </div>
 
-                      <div className="text-sm sm:text-[15px] text-stone-600 font-medium font-mono mt-1 flex flex-wrap items-center gap-1">
+                      <div className="text-[18px] sm:text-[20px] text-stone-600 font-medium font-mono mt-1 flex flex-wrap items-center gap-1">
                         {person.birthDate && (
                           <span>{formatDisplayDate(person.birthDate, person.isBirthApproximate)}</span>
                         )}
@@ -712,8 +712,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   </div>
 
                   {/* Bottom info & Quick action affordance */}
-                  <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[11px] text-stone-500">
-                    <span className="font-mono text-stone-400">דור {node.generation + 1}</span>
+                  <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[13px] text-stone-500">
+                    <span className="font-mono text-stone-400 text-[13px]">דור {node.generation + 1}</span>
 
                     {/* Hover Quick Actions */}
                     <div className="hidden group-hover:flex items-center gap-1">

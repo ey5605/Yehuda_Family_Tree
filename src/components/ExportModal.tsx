@@ -148,14 +148,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       if (selectedView === 'detailed-vertical') {
         // Detailed View: Avatar + Name + Dates
-        const avatarSize = 36;
+        const avatarSize = 64;
         const avatarX = node.x + node.width - avatarSize - 10;
         const avatarY = node.y + 10;
 
         // Draw Avatar background
         ctx.fillStyle = '#f5f5f4';
         ctx.beginPath();
-        ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [8]);
+        ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [12]);
         ctx.fill();
 
         // Photo if available
@@ -164,21 +164,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             const img = await loadImage(person.photoUrl);
             ctx.save();
             ctx.beginPath();
-            ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [8]);
+            ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [12]);
             ctx.clip();
             ctx.drawImage(img, avatarX, avatarY, avatarSize, avatarSize);
             ctx.restore();
           } catch {
             // Draw initial if image fails
             ctx.fillStyle = '#a8a29e';
-            ctx.font = 'bold 16px "Rubik", sans-serif';
+            ctx.font = 'bold 22px "Rubik", sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(person.fullName.charAt(0), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
           }
         } else {
           ctx.fillStyle = '#a8a29e';
-          ctx.font = 'bold 16px "Rubik", sans-serif';
+          ctx.font = 'bold 22px "Rubik", sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(person.fullName.charAt(0), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
@@ -186,7 +186,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         // Full Name text (Right to left)
         ctx.fillStyle = '#1c1917';
-        ctx.font = 'bold 18px "Rubik", "Heebo", sans-serif';
+        ctx.font = 'bold 24px "Rubik", "Heebo", sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
 
@@ -202,7 +202,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           if (metrics.width > maxWidth && n > 0) {
             ctx.fillText(line.trim(), avatarX - 8, textY);
             line = words[n] + ' ';
-            textY += 22;
+            textY += 26;
           } else {
             line = testLine;
           }
@@ -210,9 +210,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         ctx.fillText(line.trim(), avatarX - 8, textY);
 
         // Dates
-        textY += 24;
+        textY += 28;
         ctx.fillStyle = '#57534e';
-        ctx.font = '13px "Rubik", sans-serif';
+        ctx.font = '16px "Rubik", sans-serif';
         const dateText = [
           formatDisplayDate(person.birthDate, person.isBirthApproximate),
           formatDisplayDate(person.deathDate, person.isDeathApproximate),
@@ -226,7 +226,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         // Generation label
         ctx.fillStyle = '#a8a29e';
-        ctx.font = '9px "Rubik", sans-serif';
+        ctx.font = '11px "Rubik", sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(`דור ${node.generation + 1}`, node.x + 10, node.y + node.height - 15);
       } else {
