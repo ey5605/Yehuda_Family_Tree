@@ -207,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   setIsSearchOpen(true);
                 }}
                 onFocus={() => setIsSearchOpen(true)}
-                className="bg-transparent text-xs text-stone-900 placeholder-stone-400 outline-none w-28 lg:w-36 transition-all"
+                className="bg-transparent text-xs text-stone-900 placeholder:text-stone-300 outline-none w-28 lg:w-36 transition-all"
               />
             </div>
 
@@ -296,28 +296,47 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>ייצוא</span>
           </button>
 
-          {/* Add Person Primary Action (Compact on mobile) */}
-          {!isReadOnly && (
-            <button
-              onClick={onAddPerson}
-              className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-medium text-white bg-stone-900 hover:bg-stone-800 rounded-lg shadow-xs transition-colors whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden xs:inline">הוסף אדם</span>
-            </button>
-          )}
-
-          {/* Desktop ReadOnly toggle */}
+          {/* ReadOnly Lock/Unlock Status and Action Button */}
           <button
             onClick={onToggleReadOnly}
-            title={isReadOnly ? 'מצב צפייה פעיל (לחץ לעריכה)' : 'מצב עריכה פעיל (לחץ לנעילת צפייה)'}
-            className={`hidden sm:flex p-2 rounded-lg border transition-colors ${
+            title={
               isReadOnly
-                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                : 'text-stone-500 hover:text-stone-800 border-stone-200 hover:bg-stone-50'
+                ? 'עץ המשפחה נעול במצב צפייה. לחץ להזנת סיסמה ופתיחה לעריכה'
+                : 'מצב עריכה פעיל. לחץ לנעילה חזרה למצב צפייה'
+            }
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-2xs whitespace-nowrap active:scale-95 ${
+              isReadOnly
+                ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+                : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400'
             }`}
           >
-            {isReadOnly ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            {isReadOnly ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span className="hidden xs:inline">נעול לצפייה</span>
+                <span className="text-[10px] text-amber-800 font-bold underline mr-0.5">פתח</span>
+              </>
+            ) : (
+              <>
+                <Unlock className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="hidden xs:inline">פתוח לעריכה</span>
+                <span className="text-[10px] text-emerald-800 font-medium mr-0.5">(נעל)</span>
+              </>
+            )}
+          </button>
+
+          {/* Add Person Primary Action */}
+          <button
+            onClick={isReadOnly ? onToggleReadOnly : onAddPerson}
+            title={isReadOnly ? 'העץ במצב צפייה נעול. לחץ להזנת סיסמה להוספת אדם' : 'הוסף אדם חדש לעץ'}
+            className={`flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-medium rounded-lg shadow-xs transition-colors whitespace-nowrap cursor-pointer ${
+              isReadOnly
+                ? 'bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-200'
+                : 'text-white bg-stone-900 hover:bg-stone-800'
+            }`}
+          >
+            {isReadOnly ? <Lock className="w-3.5 h-3.5 text-stone-500" /> : <Plus className="w-4 h-4" />}
+            <span className="hidden xs:inline">{isReadOnly ? 'הוסף אדם (נעול)' : 'הוסף אדם'}</span>
           </button>
 
           {/* Desktop Tests Runner */}
@@ -352,7 +371,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 placeholder="הקלד שם לחיפוש..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-transparent text-sm text-stone-900 placeholder-stone-400 outline-none"
+                className="w-full bg-transparent text-sm text-stone-900 placeholder:text-stone-300 outline-none"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')} className="text-stone-400 hover:text-stone-600">
@@ -567,16 +586,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <button
                 onClick={() => {
+                  setIsMobileMenuOpen(false);
                   onToggleReadOnly();
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg border font-medium text-right ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 text-xs rounded-lg border font-semibold text-right transition-colors ${
                   isReadOnly
-                    ? 'bg-amber-50 text-amber-900 border-amber-200'
-                    : 'bg-stone-50 text-stone-800 border-stone-200'
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-300'
                 }`}
               >
-                {isReadOnly ? <Lock className="w-4 h-4 text-amber-700" /> : <Unlock className="w-4 h-4 text-stone-500" />}
-                <span>{isReadOnly ? 'מצב צפייה בלבד (לחץ לעריכה)' : 'מצב עריכה פעיל (לחץ לנעילה)'}</span>
+                <div className="flex items-center gap-2">
+                  {isReadOnly ? <Lock className="w-4 h-4 text-amber-700" /> : <Unlock className="w-4 h-4 text-emerald-700" />}
+                  <span>{isReadOnly ? 'מצב צפייה נעול (לחץ לפתיחה)' : 'מצב עריכה פעיל (לחץ לנעילה)'}</span>
+                </div>
+                <span className="text-[11px] font-bold text-amber-800 underline">
+                  {isReadOnly ? 'הזן סיסמה' : 'נעל'}
+                </span>
               </button>
 
               <button

@@ -16,7 +16,9 @@ import {
   Check,
   ChevronDown,
   Users,
-  Sparkles
+  Sparkles,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { Person, FamilyTreeData, Relationship, ParentChildSubType } from '../types/family';
 import {
@@ -40,6 +42,7 @@ interface PersonModalProps {
   initialMode?: 'view' | 'edit';
   treeData: FamilyTreeData;
   isReadOnly: boolean;
+  onPromptUnlock?: () => void;
   onClose: () => void;
   onSavePerson: (updatedPerson: Person) => void;
   onSelectPerson: (personId: string) => void;
@@ -66,6 +69,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   initialMode = 'view',
   treeData,
   isReadOnly,
+  onPromptUnlock,
   onClose,
   onSavePerson,
   onSelectPerson,
@@ -357,9 +361,22 @@ export const PersonModal: React.FC<PersonModalProps> = ({
               פרטי בן/בת משפחה
             </span>
             {isReadOnly && (
-              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                צפייה בלבד
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  צפייה בלבד
+                </span>
+                {onPromptUnlock && (
+                  <button
+                    type="button"
+                    onClick={onPromptUnlock}
+                    className="text-xs text-amber-900 bg-white hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1 font-medium transition-colors shadow-2xs"
+                    title="פתח לעריכה באמצעות סיסמה"
+                  >
+                    <Unlock className="w-3 h-3 text-amber-700" />
+                    <span>פתח לעריכה</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1.5">
@@ -451,7 +468,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                 value={fullName}
                 onChange={e => setFullName(e.target.value)}
                 placeholder="לדוגמה: ישראל יהודה"
-                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100"
+                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100"
               />
               {duplicateNames.length > 0 && (
                 <div className="mt-1.5 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200 flex items-start gap-1.5">
@@ -476,7 +493,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                   value={birthDate}
                   onChange={e => setBirthDate(e.target.value)}
                   placeholder="1932 או 1932-05 או 1932-05-14"
-                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono placeholder:text-stone-300/60 disabled:bg-stone-100"
                 />
                 <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer text-xs text-stone-600">
                   <input
@@ -501,7 +518,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                   value={deathDate}
                   onChange={e => setDeathDate(e.target.value)}
                   placeholder="1998 או 1998-11"
-                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono placeholder:text-stone-300/60 disabled:bg-stone-100"
                 />
                 <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer text-xs text-stone-600">
                   <input
@@ -535,7 +552,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="מידע ביוגרפי, עיסוק, מקום לידה ועוד..."
-                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100 resize-none"
+                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100 resize-none"
               />
             </div>
 
@@ -858,7 +875,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                       if (e.target.value) setSelectedExistingPersonId('');
                     }}
                     placeholder="הזן שם מלא..."
-                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400"
+                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-300/60"
                   />
                 </div>
 

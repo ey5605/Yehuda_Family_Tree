@@ -62,6 +62,15 @@ export interface LayoutConnector {
   label?: string;
 }
 
+export interface BranchCollapseButton {
+  id: string;
+  personId: string;
+  x: number;
+  y: number;
+  descendantCount: number;
+  isCollapsed: boolean;
+}
+
 export interface TreeLayout {
   nodes: LayoutNode[];
   connectors: LayoutConnector[];
@@ -73,6 +82,7 @@ export interface TreeLayout {
     width: number;
     height: number;
   };
+  branchButtons?: BranchCollapseButton[];
 }
 
 export interface DateValidationResult {

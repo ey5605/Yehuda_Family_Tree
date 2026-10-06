@@ -178,7 +178,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         // Full Name text (Right to left)
         ctx.fillStyle = '#1c1917';
-        ctx.font = 'bold 15px "Rubik", "Heebo", sans-serif';
+        ctx.font = 'bold 18px "Rubik", "Heebo", sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
 
@@ -194,7 +194,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           if (metrics.width > maxWidth && n > 0) {
             ctx.fillText(line.trim(), avatarX - 8, textY);
             line = words[n] + ' ';
-            textY += 18;
+            textY += 22;
           } else {
             line = testLine;
           }
@@ -202,9 +202,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         ctx.fillText(line.trim(), avatarX - 8, textY);
 
         // Dates
-        textY += 20;
-        ctx.fillStyle = '#78716c';
-        ctx.font = '11px "Rubik", sans-serif';
+        textY += 24;
+        ctx.fillStyle = '#57534e';
+        ctx.font = '13px "Rubik", sans-serif';
         const dateText = [
           formatDisplayDate(person.birthDate, person.isBirthApproximate),
           formatDisplayDate(person.deathDate, person.isDeathApproximate),

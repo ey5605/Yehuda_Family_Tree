@@ -667,9 +667,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Detailed Vertical View Card */}
               {viewType === 'detailed-vertical' && (
                 <div className="h-full p-2.5 flex flex-col justify-between">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     {/* Avatar */}
-                    <div className="w-11 h-11 rounded-lg bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
                       {person.photoUrl ? (
                         <img
                           src={person.photoUrl}
@@ -678,20 +678,20 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <User className="w-5 h-5 text-stone-400" />
+                        <User className="w-6 h-6 text-stone-400" />
                       )}
                     </div>
 
                     {/* Name & Dates */}
                     <div className="min-w-0 flex-1">
                       <div
-                        className="font-bold text-stone-900 text-lg sm:text-xl leading-snug break-words tracking-tight"
+                        className="font-bold text-stone-900 text-2xl sm:text-[26px] leading-tight break-words tracking-tight"
                         title={person.fullName}
                       >
                         {person.fullName}
                       </div>
 
-                      <div className="text-[11px] text-stone-500 font-mono mt-1 flex flex-wrap items-center gap-1">
+                      <div className="text-sm sm:text-[15px] text-stone-600 font-medium font-mono mt-1 flex flex-wrap items-center gap-1">
                         {person.birthDate && (
                           <span>{formatDisplayDate(person.birthDate, person.isBirthApproximate)}</span>
                         )}
@@ -704,7 +704,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   </div>
 
                   {/* Bottom info & Quick action affordance */}
-                  <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[10px] text-stone-500">
+                  <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[11px] text-stone-500">
                     <span className="font-mono text-stone-400">דור {node.generation + 1}</span>
 
                     {/* Hover Quick Actions */}
@@ -737,11 +737,11 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Compact Vertical View Card */}
               {viewType === 'compact-vertical' && (
                 <div className="h-full px-2.5 py-1.5 flex flex-col justify-center text-center">
-                  <div className="font-bold text-base sm:text-[17px] text-stone-900 leading-snug truncate" title={person.fullName}>
+                  <div className="font-bold text-[17px] sm:text-[19px] text-stone-900 leading-snug truncate" title={person.fullName}>
                     {person.fullName}
                   </div>
                   {(person.birthDate || person.deathDate) && (
-                    <div className="text-[11px] text-stone-500 font-mono mt-0.5 truncate">
+                    <div className="text-xs text-stone-500 font-mono mt-0.5 truncate">
                       {person.birthDate ? formatDisplayDate(person.birthDate, person.isBirthApproximate) : ''}
                       {person.birthDate && person.deathDate ? ' – ' : ''}
                       {person.deathDate ? formatDisplayDate(person.deathDate, person.isDeathApproximate) : ''}
@@ -753,11 +753,11 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Compact Horizontal View Card */}
               {viewType === 'compact-horizontal' && (
                 <div className="h-full px-3 py-1 flex items-center justify-between text-right">
-                  <span className="font-bold text-base sm:text-[17px] text-stone-900 truncate flex-1 ml-1.5" title={person.fullName}>
+                  <span className="font-bold text-[17px] sm:text-[19px] text-stone-900 truncate flex-1 ml-1.5" title={person.fullName}>
                     {person.fullName}
                   </span>
                   {(person.birthDate || person.deathDate) && (
-                    <span className="text-[10px] text-stone-500 font-mono shrink-0 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">
+                    <span className="text-[11px] text-stone-500 font-mono shrink-0 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">
                       {person.birthDate ? formatDisplayDate(person.birthDate, person.isBirthApproximate) : ''}
                       {person.birthDate && person.deathDate ? ' – ' : ''}
                       {person.deathDate ? formatDisplayDate(person.deathDate, person.isDeathApproximate) : ''}
@@ -766,42 +766,47 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                 </div>
               )}
 
-              {/* Collapse/Expand Toggle Indicator */}
-              {node.descendantCount !== undefined && node.descendantCount > 0 && (
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    toggledNodeAnchorRef.current = { id: node.id, oldX: node.x, oldY: node.y };
-                    onToggleCollapse(node.id);
-                  }}
-                  title={node.isCollapsed ? `הצג ${node.descendantCount} צאצאים` : 'הסתר את כל הדורות מתחת'}
-                  className={`absolute z-20 px-2.5 py-1 min-h-[32px] rounded-full text-xs font-mono font-medium border flex items-center justify-center gap-0 shadow-sm transition-all cursor-pointer touch-manipulation select-none active:scale-95 ${
-                    viewType === 'compact-horizontal'
-                      ? '-left-8 top-1/2 -translate-y-1/2'
-                      : '-bottom-4 left-1/2 -translate-x-1/2'
-                  } ${
-                    node.isCollapsed
-                      ? 'bg-amber-600 text-white border-amber-700 hover:bg-amber-700 ring-2 ring-amber-200'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100 hover:border-stone-400'
-                  }`}
-                >
-                  {node.isCollapsed ? (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" />
-                      <span>+{node.descendantCount}</span>
-                    </>
-                  ) : (
-                    <>
-                      <ChevronUp className="w-3.5 h-3.5 text-stone-500" />
-                      <span className="text-[11px] text-stone-600"></span>
-                    </>
-                  )}
-                </button>
-              )}
             </div>
           );
         })}
+
+        {/* Branch Collapse/Expand Buttons on splitting branch lines */}
+        {layout.branchButtons?.map(btn => (
+          <button
+            key={btn.id}
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              const clickedNode = layout.nodes.find(n => n.id === btn.personId);
+              toggledNodeAnchorRef.current = {
+                id: btn.personId,
+                oldX: clickedNode ? clickedNode.x : btn.x,
+                oldY: clickedNode ? clickedNode.y : btn.y,
+              };
+              onToggleCollapse(btn.personId);
+            }}
+            title={btn.isCollapsed ? `הצג ${btn.descendantCount} צאצאים` : 'הסתר את כל הדורות מתחת'}
+            style={{
+              left: `${btn.x}px`,
+              top: `${btn.y}px`,
+              transform: 'translate(-50%, -50%)',
+            }}
+            className={`absolute z-20 px-2 py-0.5 min-h-[26px] rounded-full text-xs font-mono font-medium border flex items-center justify-center gap-0.5 shadow-sm transition-transform cursor-pointer touch-manipulation select-none active:scale-95 ${
+              btn.isCollapsed
+                ? 'bg-amber-600 text-white border-amber-700 hover:bg-amber-700 ring-2 ring-amber-200'
+                : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100 hover:border-stone-400'
+            }`}
+          >
+            {btn.isCollapsed ? (
+              <>
+                <ChevronDown className="w-3 h-3 shrink-0" />
+                <span>+{btn.descendantCount}</span>
+              </>
+            ) : (
+              <ChevronUp className="w-3 h-3 text-stone-500 shrink-0" />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Floating Bottom Canvas Controls */}

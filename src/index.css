@@ -8,6 +8,12 @@
   .font-hebrew-serif {
     font-family: 'Frank Ruhl Libre', Georgia, serif;
   }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #e2e8f0 !important;
+    opacity: 0.85 !important;
+  }
 }
 
 /* Custom scrollbars */

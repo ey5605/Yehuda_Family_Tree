@@ -5,6 +5,7 @@ import { PersonModal } from './components/PersonModal';
 import { ImportModal } from './components/ImportModal';
 import { ExportModal } from './components/ExportModal';
 import { AcceptanceTestModal } from './components/AcceptanceTestModal';
+import { UnlockModal } from './components/UnlockModal';
 import { FamilyTreeData, ViewType, Person, Relationship } from './types/family';
 import { computeTreeLayout } from './utils/treeLayout';
 import {
@@ -34,7 +35,8 @@ export default function App() {
 
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
-  const [isReadOnly, setIsReadOnly] = useState<boolean>(false);
+  const [isReadOnly, setIsReadOnly] = useState<boolean>(true);
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState<boolean>(false);
   const [fitTrigger, setFitTrigger] = useState(1);
 
   // Undo / Redo History Stacks
@@ -147,7 +149,10 @@ export default function App() {
 
   // Add person handler
   const handleAddNewPerson = () => {
-    if (isReadOnly) return;
+    if (isReadOnly) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     const newId = `person-${Date.now()}`;
     const newPerson: Person = {
       id: newId,
@@ -169,7 +174,10 @@ export default function App() {
 
   // Quick Add Child
   const handleQuickAddChild = (parentId: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     const childId = `person-${Date.now()}`;
     const child: Person = {
       id: childId,
@@ -200,7 +208,10 @@ export default function App() {
 
   // Quick Add Spouse
   const handleQuickAddSpouse = (personId: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     const spouseId = `person-${Date.now()}`;
     const spouse: Person = {
       id: spouseId,
@@ -458,7 +469,13 @@ export default function App() {
         canRedo={future.length > 0}
         saveStatus={saveStatus}
         isReadOnly={isReadOnly}
-        onToggleReadOnly={() => setIsReadOnly(r => !r)}
+        onToggleReadOnly={() => {
+          if (isReadOnly) {
+            setIsUnlockModalOpen(true);
+          } else {
+            setIsReadOnly(true);
+          }
+        }}
         onSyncToServer={handleSyncToServer}
         onRefreshFromServer={handleRefreshFromServer}
       />
@@ -493,6 +510,7 @@ export default function App() {
           personId={selectedPersonId}
           treeData={treeData}
           isReadOnly={isReadOnly}
+          onPromptUnlock={() => setIsUnlockModalOpen(true)}
           onClose={() => {
             setIsPersonModalOpen(false);
           }}
@@ -546,6 +564,15 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Password Unlock Modal */}
+      <UnlockModal
+        isOpen={isUnlockModalOpen}
+        onClose={() => setIsUnlockModalOpen(false)}
+        onUnlock={() => {
+          setIsReadOnly(false);
+        }}
+      />
     </div>
   );
 }
