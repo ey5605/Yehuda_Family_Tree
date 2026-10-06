@@ -16,11 +16,15 @@ import {
   ClipboardPaste,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  Globe,
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { FamilyTreeData, Person, Relationship } from '../types/family';
 import { parseUniversalFamilyJson, ParsedTreeOutput } from '../utils/universalTreeImporter';
 import { parseSvgContent, ParseResult, ExtractedPerson, ExtractedRelationship } from '../utils/svgTreeParser';
+import { syncTreeFromPublishUrl } from '../utils/storage';
 
 interface ImportModalProps {
   currentTree: FamilyTreeData;
@@ -40,6 +44,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [pastedJsonText, setPastedJsonText] = useState('');
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [sourceFormat, setSourceFormat] = useState<string>('JSON');
+
+  // Publish Sync State
+  const [publishUrl, setPublishUrl] = useState(() => localStorage.getItem('saved_publish_url') || '');
+  const [isSyncingPublish, setIsSyncingPublish] = useState(false);
+  const [publishSuccessMsg, setPublishSuccessMsg] = useState<string | null>(null);
 
   // Parsed Data state for review
   const [parsedTreeData, setParsedTreeData] = useState<FamilyTreeData | null>(null);
@@ -173,6 +182,42 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     processFileContent(pastedJsonText, 'תוכן JSON שהודבק');
   };
 
+  // Sync from Publish URL Handler
+  const handleSyncFromPublish = async () => {
+    if (!publishUrl.trim()) return;
+    setErrorMessage(null);
+    setPublishSuccessMsg(null);
+    setIsSyncingPublish(true);
+
+    try {
+      const result = await syncTreeFromPublishUrl(publishUrl.trim());
+      if (!result.success || !result.tree) {
+        setErrorMessage(result.error || 'לא הצלחנו למשוך את הנתונים מקישור ה-Publish. ודא שהקישור תקין.');
+        return;
+      }
+
+      localStorage.setItem('saved_publish_url', publishUrl.trim());
+      const pCount = Object.keys(result.tree.persons || {}).length;
+      const rCount = (result.tree.relationships || []).length;
+      const spCount = (result.tree.relationships || []).filter(r => r.type === 'spouse').length;
+      const pcCount = (result.tree.relationships || []).filter(r => r.type === 'parent-child').length;
+
+      setParsedTreeData(result.tree);
+      setParsedStats({
+        personsCount: pCount,
+        relationshipsCount: rCount,
+        spouseCount: spCount,
+        parentChildCount: pcCount,
+      });
+      setSourceFormat(`גרסת Publish מרוחקת (${pCount} נפשות)`);
+      setStage('review');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'שגיאה בלתי צפויה בעת סנכרון מה-Publish');
+    } finally {
+      setIsSyncingPublish(false);
+    }
+  };
+
   // Review stage inline editing
   const handleUpdatePersonName = (personId: string, newName: string) => {
     if (!parsedTreeData) return;
@@ -255,11 +300,71 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-1 text-xs text-red-900 flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-red-950">שגיאה בטעינת הקובץ</div>
+                    <div className="font-semibold text-red-950">שגיאה בטעינת הקובץ / סנכרון</div>
                     <p className="mt-0.5 leading-relaxed text-red-800">{errorMessage}</p>
                   </div>
                 </div>
               )}
+
+              {/* Sync from Publish URL Section */}
+              <div className="p-4 bg-gradient-to-br from-amber-50/90 to-stone-50 border-2 border-amber-300/80 rounded-2xl space-y-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-800 text-amber-50 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
+                      <span>סנכרון ומשיכת נתונים מהגרסה המפורסמת (Publish)</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full font-medium">חדש</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600 mt-0.5 leading-relaxed">
+                      העלית תמונות או ערכת נתונים בקישור ה-Publish (בנייד או במחשב)? הדבק את הקישור ומשוך את כל העץ המעודכן ישירות לחלון העבודה.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <input
+                    type="url"
+                    value={publishUrl}
+                    onChange={e => setPublishUrl(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSyncFromPublish();
+                      }
+                    }}
+                    placeholder="הדבק כאן את כתובת ה-Publish המלאה (למשל הקישור שפתחת בנייד)..."
+                    className="flex-1 px-3 py-2 text-xs bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none placeholder:text-stone-300/70 text-left"
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSyncingPublish || !publishUrl.trim()}
+                    onClick={handleSyncFromPublish}
+                    className="px-4 py-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
+                  >
+                    {isSyncingPublish ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>מושך נתונים...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>משוך עץ מה-Publish</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {publishSuccessMsg && (
+                  <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{publishSuccessMsg}</span>
+                  </div>
+                )}
+              </div>
 
               {/* Drag and Drop Zone */}
               <div

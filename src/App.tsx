@@ -58,7 +58,7 @@ export default function App() {
 
   // Auto-sync when user switches to tab or unlocks device
   useEffect(() => {
-    const handleVisibilityChange = async () => {
+    const handleSyncCheck = async () => {
       if (document.visibilityState === 'visible') {
         const fresh = await fetchServerTree();
         if (fresh && fresh.metadata?.lastUpdated) {
@@ -73,32 +73,42 @@ export default function App() {
         }
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
+
+    document.addEventListener('visibilitychange', handleSyncCheck);
+    window.addEventListener('focus', handleSyncCheck);
+    const interval = setInterval(handleSyncCheck, 10000);
+
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleSyncCheck);
+      window.removeEventListener('focus', handleSyncCheck);
+      clearInterval(interval);
     };
   }, []);
 
   // Push new state with undo record
   const updateTreeData = useCallback(
-    (newTree: FamilyTreeData, recordHistory = true) => {
+    (newTree: FamilyTreeData, recordHistory = true, immediateSave = false) => {
       if (recordHistory) {
         setHistory(prev => [...prev.slice(-30), treeData]);
         setFuture([]);
       }
       setTreeData(newTree);
 
-      // Trigger debounced autosave
-      setSaveStatus('saving');
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
-      saveTimerRef.current = setTimeout(async () => {
-        const success = await saveFamilyTree(newTree);
-        setSaveStatus(success ? 'saved' : 'offline');
-      }, 400);
+
+      setSaveStatus('saving');
+      if (immediateSave) {
+        saveFamilyTree(newTree).then(success => {
+          setSaveStatus(success ? 'saved' : 'offline');
+        });
+      } else {
+        saveTimerRef.current = setTimeout(async () => {
+          const success = await saveFamilyTree(newTree);
+          setSaveStatus(success ? 'saved' : 'offline');
+        }, 350);
+      }
     },
     [treeData]
   );
@@ -276,7 +286,7 @@ export default function App() {
         [updatedPerson.id]: updatedPerson,
       },
     };
-    updateTreeData(updated);
+    updateTreeData(updated, true, true);
     setIsPersonModalOpen(false);
   };
 

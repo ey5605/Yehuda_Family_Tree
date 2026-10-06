@@ -128,8 +128,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       // Card Box
       ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#e7e5e4';
-      ctx.lineWidth = 1;
+      if (person.gender === 'male') {
+        ctx.strokeStyle = '#3b82f6'; // Blue
+        ctx.lineWidth = 2;
+      } else if (person.gender === 'female') {
+        ctx.strokeStyle = '#f472b6'; // Pink
+        ctx.lineWidth = 2;
+      } else {
+        ctx.strokeStyle = '#292524'; // Regular dark / stone
+        ctx.lineWidth = 1.2;
+      }
 
       // Rounded rectangle
       ctx.beginPath();

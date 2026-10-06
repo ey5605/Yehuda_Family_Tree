@@ -35,6 +35,7 @@ if (!fs.existsSync(DATA_DIR)) {
 // API: Get family tree data
 app.get('/api/tree', (req, res) => {
   try {
+    fs.appendFileSync('/tmp/api-requests.log', `[${new Date().toISOString()}] GET /api/tree from ${req.ip} UA: ${req.headers['user-agent']}\n`);
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -63,6 +64,7 @@ app.get('/api/tree', (req, res) => {
 app.post('/api/tree', (req, res) => {
   try {
     const data = req.body;
+    fs.appendFileSync('/tmp/api-requests.log', `[${new Date().toISOString()}] POST /api/tree from ${req.ip} UA: ${req.headers['user-agent']} size: ${JSON.stringify(data).length}\n`);
     if (!data || typeof data !== 'object') {
       return res.status(400).json({ error: 'Invalid data format' });
     }
@@ -76,6 +78,62 @@ app.post('/api/tree', (req, res) => {
   } catch (error) {
     console.error('Error saving tree file:', error);
     return res.status(500).json({ error: 'Failed to save data' });
+  }
+});
+
+// API: Sync family tree from remote Publish URL
+app.post('/api/sync-from-publish', async (req, res) => {
+  try {
+    let { url } = req.body || {};
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'נא לספק כתובת URL תקינה' });
+    }
+
+    url = url.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    let targetUrl = url;
+    if (!targetUrl.includes('/api/tree')) {
+      targetUrl = targetUrl.replace(/\/+$/, '') + '/api/tree';
+    }
+
+    targetUrl += (targetUrl.includes('?') ? '&' : '?') + `_t=${Date.now()}`;
+
+    const remoteRes = await fetch(targetUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AIStudioSync/1.0',
+      },
+    });
+
+    if (!remoteRes.ok) {
+      return res.status(remoteRes.status).json({
+        error: `שגיאה במשיכת הנתונים מקישור ה-Publish (${remoteRes.status} ${remoteRes.statusText})`,
+      });
+    }
+
+    const data = await remoteRes.json();
+    if (!data || !data.persons || typeof data.persons !== 'object') {
+      return res.status(400).json({
+        error: 'הנתונים שהתקבלו אינם במבנה של אילן יוחסין תקין.',
+      });
+    }
+
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+
+    return res.json({
+      success: true,
+      tree: data,
+      personsCount: Object.keys(data.persons).length,
+      lastUpdated: data.metadata?.lastUpdated,
+    });
+  } catch (error: any) {
+    console.error('Error syncing from remote publish URL:', error);
+    return res.status(500).json({
+      error: error.message || 'שגיאה בניסיון התחברות לקישור ה-Publish',
+    });
   }
 });
 

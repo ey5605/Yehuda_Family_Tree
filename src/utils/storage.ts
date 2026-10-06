@@ -1,4 +1,4 @@
-import { FamilyTreeData } from '../types/family';
+import { FamilyTreeData, Person, Relationship } from '../types/family';
 import { parseUniversalFamilyJson } from './universalTreeImporter';
 import { INITIAL_FAMILY_TREE } from '../data/initialFamilyTree';
 
@@ -18,6 +18,49 @@ export const EMPTY_TREE: FamilyTreeData = {
 
 export const INITIAL_TREE: FamilyTreeData = INITIAL_FAMILY_TREE;
 
+// Merge two trees without losing photos, persons, or relationships
+export function mergeFamilyTrees(base: FamilyTreeData, incoming: FamilyTreeData): FamilyTreeData {
+  const mergedPersons: Record<string, Person> = { ...(base.persons || {}) };
+
+  for (const [id, incPerson] of Object.entries(incoming.persons || {})) {
+    const basePerson = mergedPersons[id];
+    if (!basePerson) {
+      mergedPersons[id] = incPerson;
+    } else {
+      mergedPersons[id] = {
+        ...basePerson,
+        ...incPerson,
+        // Always preserve photoUrl if incoming has it
+        photoUrl: incPerson.photoUrl || basePerson.photoUrl,
+        gender: incPerson.gender !== undefined ? incPerson.gender : basePerson.gender,
+        birthDate: incPerson.birthDate || basePerson.birthDate,
+        deathDate: incPerson.deathDate || basePerson.deathDate,
+        notes: incPerson.notes || basePerson.notes,
+      };
+    }
+  }
+
+  const relMap = new Map<string, Relationship>();
+  for (const r of base.relationships || []) {
+    relMap.set(r.id, r);
+  }
+  for (const r of incoming.relationships || []) {
+    relMap.set(r.id, r);
+  }
+
+  const baseTime = base.metadata?.lastUpdated ? new Date(base.metadata.lastUpdated).getTime() : 0;
+  const incTime = incoming.metadata?.lastUpdated ? new Date(incoming.metadata.lastUpdated).getTime() : 0;
+
+  return {
+    persons: mergedPersons,
+    relationships: Array.from(relMap.values()),
+    metadata: {
+      title: base.metadata?.title || incoming.metadata?.title || 'אילן היוחסין של משפחת יהודה',
+      lastUpdated: new Date(Math.max(baseTime, incTime, Date.now())).toISOString(),
+    },
+  };
+}
+
 // Load initial tree with intelligent multi-source synchronization
 export async function loadFamilyTree(): Promise<FamilyTreeData> {
   let serverData: FamilyTreeData | null = null;
@@ -28,6 +71,7 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
   try {
     const res = await fetch(`/api/tree?_t=${Date.now()}`, {
       cache: 'no-store',
+      credentials: 'include',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -72,13 +116,18 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
     }
 
     // Both server and local have data:
+    // Check if local has photos or modifications not yet on the server!
+    const localHasExtraPhotos = Object.values(localData.persons || {}).some(
+      lp => lp.photoUrl && !serverData!.persons[lp.id]?.photoUrl
+    );
     const serverTime = serverData.metadata?.lastUpdated ? new Date(serverData.metadata.lastUpdated).getTime() : 0;
     const localTime = localData.metadata?.lastUpdated ? new Date(localData.metadata.lastUpdated).getTime() : 0;
 
-    // Only if local was edited strictly NEWER than the server (e.g. offline edits on this specific device)
-    if (localTime > serverTime && localCount >= serverCount) {
-      saveFamilyTree(localData);
-      return localData;
+    if (localHasExtraPhotos || (localTime > serverTime && localCount >= serverCount)) {
+      // Local has photos or newer edits! Merge and save to server immediately!
+      const merged = mergeFamilyTrees(serverData, localData);
+      saveFamilyTree(merged);
+      return merged;
     } else {
       // Server is newer or equal -> sync down to local storage and display server data!
       try {
@@ -134,9 +183,14 @@ export async function saveFamilyTree(data: FamilyTreeData): Promise<boolean> {
     const res = await fetch('/api/tree', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(updatedData),
     });
-    return res.ok;
+    if (!res.ok) {
+      console.warn('Server save returned status:', res.status, res.statusText);
+      return false;
+    }
+    return true;
   } catch (err) {
     console.warn('Server save failed, saved locally:', err);
     return false;
@@ -169,7 +223,14 @@ export function parseTreeBackup(jsonString: string): FamilyTreeData {
 // Explicit fetch from server (e.g. to pull latest data from other devices)
 export async function fetchServerTree(): Promise<FamilyTreeData | null> {
   try {
-    const res = await fetch('/api/tree?t=' + Date.now());
+    const res = await fetch('/api/tree?_t=' + Date.now(), {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data === 'object' && data.persons && Object.keys(data.persons).length > 0) {
@@ -187,3 +248,29 @@ export async function fetchServerTree(): Promise<FamilyTreeData | null> {
 export async function pushLocalTreeToServer(data: FamilyTreeData): Promise<boolean> {
   return await saveFamilyTree(data);
 }
+
+// Pull latest tree from remote Publish URL and save to local workspace database
+export async function syncTreeFromPublishUrl(url: string): Promise<{ success: boolean; tree?: FamilyTreeData; error?: string }> {
+  try {
+    const res = await fetch('/api/sync-from-publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      return { success: false, error: result.error || 'שגיאה במשיכת הנתונים מהקישור' };
+    }
+    if (result.tree) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.tree));
+      } catch (e) {
+        console.warn('Could not cache to localStorage:', e);
+      }
+    }
+    return { success: true, tree: result.tree };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'שגיאת רשת בעת פנייה לשרת' };
+  }
+}
+

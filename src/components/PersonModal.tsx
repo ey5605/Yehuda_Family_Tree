@@ -18,9 +18,10 @@ import {
   Users,
   Sparkles,
   Lock,
-  Unlock
+  Unlock,
+  RefreshCw
 } from 'lucide-react';
-import { Person, FamilyTreeData, Relationship, ParentChildSubType } from '../types/family';
+import { Person, FamilyTreeData, Relationship, ParentChildSubType, Gender } from '../types/family';
 import {
   getParents,
   getChildren,
@@ -92,6 +93,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const [isDeathApproximate, setIsDeathApproximate] = useState(false);
   const [notes, setNotes] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [gender, setGender] = useState<Gender | undefined>(undefined);
 
   // Relationship adding modals/tabs
   const [isAddingParent, setIsAddingParent] = useState(false);
@@ -109,6 +111,8 @@ export const PersonModal: React.FC<PersonModalProps> = ({
 
   // Photo crop/zoom state
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   // Sync form when person opens
   useEffect(() => {
@@ -120,6 +124,9 @@ export const PersonModal: React.FC<PersonModalProps> = ({
       setIsDeathApproximate(person.isDeathApproximate || false);
       setNotes(person.notes || '');
       setPhotoUrl(person.photoUrl);
+      setGender(person.gender);
+      setPhotoError(null);
+      setIsUploadingPhoto(false);
     }
   }, [person]);
 
@@ -138,33 +145,74 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const children = getChildren(treeData, person.id);
   const spouses = getSpouses(treeData, person.id);
 
-  // Handle Photo File Upload
+  // Handle Photo File Upload with rock-solid FileReader & Canvas downscaling
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/')) {
+      setPhotoError('נא לבחור קובץ תמונה תקין (JPG, PNG, WebP וכד\').');
+      return;
+    }
+
+    setPhotoError(null);
+    setIsUploadingPhoto(true);
+
     const reader = new FileReader();
-    reader.onload = event => {
+
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (!result) {
+        setIsUploadingPhoto(false);
+        setPhotoError('שגיאה בטעינת קובץ התמונה. נא לנסות שוב.');
+        return;
+      }
+
       const img = new Image();
       img.onload = () => {
-        // Crop / scale to square on offscreen canvas
-        const canvas = document.createElement('canvas');
-        const size = 300;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        try {
+          const canvas = document.createElement('canvas');
+          const size = 300; // Crisp square avatar
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            setPhotoUrl(result);
+            setIsUploadingPhoto(false);
+            return;
+          }
 
-        const minDim = Math.min(img.width, img.height);
-        const startX = (img.width - minDim) / 2;
-        const startY = (img.height - minDim) / 2;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
 
-        ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, size, size);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setPhotoUrl(dataUrl);
+          const minDim = Math.min(img.width, img.height);
+          const startX = (img.width - minDim) / 2;
+          const startY = (img.height - minDim) / 2;
+
+          ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, size, size);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          setPhotoUrl(dataUrl);
+        } catch (err) {
+          console.error('Error processing photo canvas:', err);
+          setPhotoUrl(result);
+        } finally {
+          setIsUploadingPhoto(false);
+        }
       };
-      img.src = event.target?.result as string;
+
+      img.onerror = () => {
+        setIsUploadingPhoto(false);
+        setPhotoError('לא ניתן לפענח את התמונה. נא לוודא שהקובץ תקין.');
+      };
+
+      img.src = result;
     };
+
+    reader.onerror = () => {
+      setIsUploadingPhoto(false);
+      setPhotoError('שגיאה בקריאת הקובץ מהמכשיר.');
+    };
+
     reader.readAsDataURL(file);
   };
 
@@ -181,6 +229,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
       deathDate: deathDate.trim() || undefined,
       isDeathApproximate,
       photoUrl,
+      gender,
       notes: notes.trim() || undefined,
     });
   };
@@ -420,7 +469,11 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                     htmlFor="photo-upload"
                     className="absolute inset-0 bg-stone-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity text-white"
                   >
-                    <Camera className="w-5 h-5" />
+                    {isUploadingPhoto ? (
+                      <RefreshCw className="w-5 h-5 animate-spin text-amber-200" />
+                    ) : (
+                      <Camera className="w-5 h-5" />
+                    )}
                   </label>
                 )}
               </div>
@@ -432,44 +485,113 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                     id="photo-upload"
                     type="file"
                     accept="image/*"
+                    onClick={e => {
+                      (e.target as HTMLInputElement).value = '';
+                    }}
                     onChange={handlePhotoUpload}
                     className="hidden"
                   />
                   <button
                     type="button"
+                    disabled={isUploadingPhoto}
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors text-right"
+                    className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 rounded-lg transition-colors text-right flex items-center gap-1.5 cursor-pointer"
                   >
-                    העלה תמונה
+                    {isUploadingPhoto ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-700 shrink-0" />
+                        <span>מעבד תמונה...</span>
+                      </>
+                    ) : (
+                      <span>{photoUrl ? 'החלף תמונה' : 'העלה תמונה'}</span>
+                    )}
                   </button>
                   {photoUrl && (
                     <button
                       type="button"
+                      disabled={isUploadingPhoto}
                       onClick={() => setPhotoUrl(undefined)}
-                      className="px-3 py-1 text-xs text-rose-600 hover:text-rose-700 transition-colors text-right flex items-center gap-1"
+                      className="px-3 py-1 text-xs text-rose-600 hover:text-rose-700 transition-colors text-right flex items-center gap-1 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                       הסר תמונה
                     </button>
                   )}
+                  {photoError && (
+                    <div className="text-[11px] text-rose-600 font-medium mt-0.5 max-w-[220px]">
+                      {photoError}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Full Name */}
+            {/* Full Name & Gender Row */}
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1">
-                שם מלא <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                disabled={isReadOnly}
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                placeholder="לדוגמה: ישראל יהודה"
-                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100"
-              />
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label className="block text-xs font-medium text-stone-700">
+                  שם מלא <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[11px] font-medium text-stone-500">מין בן המשפחה:</span>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <input
+                  type="text"
+                  required
+                  disabled={isReadOnly}
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  placeholder="לדוגמה: ישראל יהודה"
+                  className="flex-1 min-w-0 px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100"
+                />
+
+                {/* Gender Checkboxes */}
+                <div className="flex items-center gap-1.5 shrink-0 select-none">
+                  {/* Male Checkbox */}
+                  <label
+                    title="גבר (מסגרת כחולה)"
+                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                      gender === 'male'
+                        ? 'bg-blue-50 text-blue-800 border-blue-400 shadow-2xs font-semibold'
+                        : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
+                    } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={isReadOnly}
+                      checked={gender === 'male'}
+                      onChange={() => {
+                        if (isReadOnly) return;
+                        setGender(prev => (prev === 'male' ? undefined : 'male'));
+                      }}
+                      className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                    />
+                    <span>גבר</span>
+                  </label>
+
+                  {/* Female Checkbox */}
+                  <label
+                    title="אישה (מסגרת ורודה)"
+                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                      gender === 'female'
+                        ? 'bg-rose-50 text-rose-800 border-rose-400 shadow-2xs font-semibold'
+                        : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
+                    } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={isReadOnly}
+                      checked={gender === 'female'}
+                      onChange={() => {
+                        if (isReadOnly) return;
+                        setGender(prev => (prev === 'female' ? undefined : 'female'));
+                      }}
+                      className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-500"
+                    />
+                    <span>אישה</span>
+                  </label>
+                </div>
+              </div>
               {duplicateNames.length > 0 && (
                 <div className="mt-1.5 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200 flex items-start gap-1.5">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />

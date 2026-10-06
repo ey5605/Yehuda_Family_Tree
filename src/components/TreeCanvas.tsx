@@ -647,6 +647,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             onSelectPerson(person.id);
           };
 
+          // Gender border color: Blue for male, pink for female, normal black/stone for unspecified
+          let borderClasses = 'border-[1.5px] border-stone-800 hover:border-black';
+          if (person.gender === 'male') {
+            borderClasses = 'border-2 border-blue-500 hover:border-blue-600';
+          } else if (person.gender === 'female') {
+            borderClasses = 'border-2 border-pink-400 hover:border-pink-500';
+          }
+
           return (
             <div
               key={node.uniqueKey || `${node.id}-${idx}`}
@@ -658,10 +666,10 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                 width: `${node.width}px`,
                 height: `${node.height}px`,
               }}
-              className={`absolute group bg-white rounded-xl transition-all duration-150 cursor-pointer touch-manipulation ${
+              className={`absolute group bg-white rounded-xl transition-all duration-150 cursor-pointer touch-manipulation ${borderClasses} ${
                 isSelected
-                  ? 'ring-2 ring-amber-700 shadow-md border-amber-300 z-10'
-                  : 'border border-stone-200 hover:border-stone-400 hover:shadow-sm'
+                  ? 'ring-2 ring-amber-600 ring-offset-1 shadow-md z-10'
+                  : 'hover:shadow-sm'
               }`}
             >
               {/* Detailed Vertical View Card */}

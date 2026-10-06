@@ -94,7 +94,7 @@ export function computeTreeLayout(
       nodeWidth: 244,
       nodeHeight: 140,
       hGap: 36,
-      vGap: 72,
+      vGap: 96,
       spouseGap: 24,
     };
   } else if (viewType === 'compact-vertical') {
@@ -122,7 +122,7 @@ export function computeTreeLayout(
     return computeHorizontalRTLTreeLayout(data, dims, genMap, collapsedNodeIds);
   }
 
-  return computeVerticalTreeLayout(data, dims, genMap, collapsedNodeIds);
+  return computeVerticalTreeLayout(data, dims, genMap, collapsedNodeIds, viewType);
 }
 
 // -------------------------------------------------------------
@@ -187,7 +187,8 @@ function computeVerticalTreeLayout(
   data: FamilyTreeData,
   dims: Dimensions,
   genMap: Map<string, number>,
-  collapsedNodeIds: Set<string>
+  collapsedNodeIds: Set<string>,
+  viewType: ViewType = 'detailed-vertical'
 ): TreeLayout {
   const nodes: LayoutNode[] = [];
   const connectors: LayoutConnector[] = [];
@@ -433,7 +434,11 @@ function computeVerticalTreeLayout(
 
     // Place Children Subtrees for each union (or branch stub button if collapsed)
     const allChildrenForPerson = getChildren(data, tree.primaryPerson.id);
-    const busY = nodeY + dims.nodeHeight + dims.vGap / 2;
+    const stemExtension =
+      viewType === 'detailed-vertical'
+        ? Math.round(dims.vGap * 0.58)
+        : Math.round(dims.vGap * 0.5);
+    const busY = nodeY + dims.nodeHeight + stemExtension;
 
     for (const union of tree.unions) {
       // Check if this union has children (either active subtrees or in the data when collapsed)
@@ -468,9 +473,14 @@ function computeVerticalTreeLayout(
         stemStartY = nodeY + dims.nodeHeight;
       }
 
+      // Position branch button higher up between couple squares (in their lower section)
+      const branchBtnY = union.spouse
+        ? nodeY + Math.round(dims.nodeHeight * 0.88)
+        : nodeY + dims.nodeHeight + 16;
+
       if (tree.isCollapsed) {
         // When branch is collapsed: draw stub stem from marriage line/parent and place expand button on it!
-        const stubEndY = stemStartY + 26;
+        const stubEndY = branchBtnY;
         connectors.push({
           id: `stem-stub-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
           type: 'child',
@@ -485,7 +495,7 @@ function computeVerticalTreeLayout(
           id: `branch-btn-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.primaryPerson.id,
           x: unionAnchorX,
-          y: stubEndY,
+          y: branchBtnY,
           descendantCount: tree.descendantCount ?? countDescendants(data, tree.primaryPerson.id),
           isCollapsed: true,
         });
@@ -505,7 +515,7 @@ function computeVerticalTreeLayout(
           id: `branch-btn-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.primaryPerson.id,
           x: unionAnchorX,
-          y: (stemStartY + busY) / 2,
+          y: branchBtnY,
           descendantCount: tree.descendantCount ?? countDescendants(data, tree.primaryPerson.id),
           isCollapsed: false,
         });

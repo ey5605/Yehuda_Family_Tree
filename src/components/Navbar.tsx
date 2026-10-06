@@ -115,35 +115,43 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="truncate">{personCount} נפשות</span>
               <span aria-hidden="true">·</span>
               {saveStatus === 'saved' && (
-                <span className="text-emerald-700 flex items-center gap-1 shrink-0" title="כל הנתונים שמורים ומסונכרנים בשרת">
-                  <CheckCircle2 className="w-3 h-3" />
+                <button
+                  type="button"
+                  onClick={onRefreshFromServer}
+                  className="text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 shrink-0 cursor-pointer text-[11px]"
+                  title="כל הנתונים שמורים ומסונכרנים בשרת. לחץ לבדיקת עדכונים ממכשירים אחרים"
+                >
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                   <span className="hidden xs:inline">שמור בשרת</span>
-                </span>
+                  <RefreshCw className="w-2.5 h-2.5 opacity-60" />
+                </button>
               )}
               {saveStatus === 'saving' && (
-                <span className="text-amber-700 flex items-center gap-1 shrink-0">
+                <span className="text-amber-700 flex items-center gap-1 shrink-0 text-[11px]">
                   <Clock className="w-3 h-3 animate-spin" />
                   <span className="hidden xs:inline">שומר בשרת...</span>
                 </span>
               )}
               {saveStatus === 'error' && (
                 <button
+                  type="button"
                   onClick={onSyncToServer}
-                  className="text-rose-700 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
-                  title="שגיאת שמירה - לחץ לניסיון חוזר"
+                  className="text-rose-700 hover:underline flex items-center gap-1 shrink-0 cursor-pointer text-[11px]"
+                  title="שגיאת שמירה לשרת - לחץ לניסיון חוזר"
                 >
                   <AlertCircle className="w-3 h-3" />
-                  <span className="hidden xs:inline">שגיאה (נסה שוב)</span>
+                  <span className="hidden xs:inline">שגיאת שמירה (נסה שוב)</span>
                 </button>
               )}
               {saveStatus === 'offline' && (
                 <button
+                  type="button"
                   onClick={onSyncToServer}
-                  className="text-amber-800 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1 shrink-0 cursor-pointer text-[10px]"
-                  title="שמור מקומית בלבד - לחץ לסנכרון לשרת"
+                  className="text-amber-800 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 flex items-center gap-1 shrink-0 cursor-pointer text-[10px] font-medium"
+                  title="שמור במכשיר זה בלבד. לחץ לסנכרון מיידי לשרת הנתונים"
                 >
                   <CloudUpload className="w-3 h-3 text-amber-600" />
-                  <span>סנכרן לשרת</span>
+                  <span>שמור מקומית (סנכרן לשרת)</span>
                 </button>
               )}
             </div>
@@ -279,11 +287,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Desktop Import Button */}
           <button
             onClick={onOpenImport}
-            title="ייבוא מקובץ (JSON / SVG)"
+            title="ייבוא מקובץ (JSON / SVG) או סנכרון מקישור Publish"
             className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors whitespace-nowrap"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>ייבוא</span>
+            <span>ייבוא / סנכרון</span>
           </button>
 
           {/* Desktop Export & Print Button */}
@@ -540,7 +548,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-800 bg-stone-50 hover:bg-stone-100 rounded-lg border border-stone-200 font-medium text-right"
               >
                 <Upload className="w-4 h-4 text-stone-600" />
-                <span>ייבוא מקובץ (JSON / SVG)</span>
+                <span>ייבוא מקובץ או סנכרון מ-Publish</span>
               </button>
 
               <button
