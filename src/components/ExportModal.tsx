@@ -1,20 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X,
   Download,
   Printer,
   FileImage,
   FileText,
+  FileCode,
   Layers,
   AlertTriangle,
   CheckCircle2,
   Sparkles,
-  Maximize2
+  Maximize2,
+  Copy,
+  Check,
+  Code2
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { FamilyTreeData, ViewType, TreeLayout, LayoutNode } from '../types/family';
 import { computeTreeLayout } from '../utils/treeLayout';
 import { formatDisplayDate } from '../utils/familyGraph';
+import { exportStandardJson, exportHumanReadableJson } from '../utils/universalTreeImporter';
 
 interface ExportModalProps {
   treeData: FamilyTreeData;
@@ -27,7 +32,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   activeViewType,
   onClose,
 }) => {
-  const [exportType, setExportType] = useState<'png' | 'a4-single' | 'a4-multi'>('png');
+  const [exportType, setExportType] = useState<'png' | 'a4-single' | 'a4-multi' | 'json'>('png');
+  const [jsonFormat, setJsonFormat] = useState<'standard' | 'readable'>('standard');
+  const [isCopied, setIsCopied] = useState(false);
+
   const [selectedView, setSelectedView] = useState<ViewType>(activeViewType);
   const [pngScale, setPngScale] = useState<number>(2); // 1x, 2x, 3x
   const [bgType, setBgType] = useState<'white' | 'transparent'>('white');
@@ -39,6 +47,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Compute layout with NO collapsed nodes for export (exports the whole complete tree)
   const fullLayout = computeTreeLayout(treeData, selectedView, new Set());
+
+  // JSON string computation
+  const jsonOutputString = useMemo(() => {
+    if (jsonFormat === 'readable') {
+      return exportHumanReadableJson(treeData);
+    }
+    return exportStandardJson(treeData);
+  }, [treeData, jsonFormat]);
+
+  const handleCopyJson = () => {
+    navigator.clipboard.writeText(jsonOutputString);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleDownloadJson = () => {
+    const filename = jsonFormat === 'standard' ? 'ilan-yehuda-backup.json' : 'ilan-yehuda-people.json';
+    const blob = new Blob([jsonOutputString], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Render to canvas helper
   const renderTreeToCanvas = async (
@@ -98,45 +133,57 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       // Rounded rectangle
       ctx.beginPath();
-      ctx.roundRect(node.x, node.y, node.width, node.height, 10);
+      const r = 10;
+      ctx.roundRect(node.x, node.y, node.width, node.height, [r]);
       ctx.fill();
       ctx.stroke();
 
       if (selectedView === 'detailed-vertical') {
-        // Detailed Card Render
-        // Avatar circle/rect
-        const avatarSize = 40;
+        // Detailed View: Avatar + Name + Dates
+        const avatarSize = 36;
         const avatarX = node.x + node.width - avatarSize - 10;
         const avatarY = node.y + 10;
 
+        // Draw Avatar background
         ctx.fillStyle = '#f5f5f4';
         ctx.beginPath();
-        ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, 8);
+        ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [8]);
         ctx.fill();
 
-        // If person has photo, draw image if loaded
+        // Photo if available
         if (person.photoUrl) {
           try {
             const img = await loadImage(person.photoUrl);
             ctx.save();
             ctx.beginPath();
-            ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, 8);
+            ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, [8]);
             ctx.clip();
             ctx.drawImage(img, avatarX, avatarY, avatarSize, avatarSize);
             ctx.restore();
-          } catch (e) {
-            // fallback
+          } catch {
+            // Draw initial if image fails
+            ctx.fillStyle = '#a8a29e';
+            ctx.font = 'bold 16px "Rubik", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(person.fullName.charAt(0), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
           }
+        } else {
+          ctx.fillStyle = '#a8a29e';
+          ctx.font = 'bold 16px "Rubik", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(person.fullName.charAt(0), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
         }
 
-        // Name text
+        // Full Name text (Right to left)
         ctx.fillStyle = '#1c1917';
-        ctx.font = 'bold 13px "Frank Ruhl Libre", "Rubik", Georgia, serif';
+        ctx.font = 'bold 13px "Frank Ruhl Libre", Georgia, serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
 
-        // Word wrap name
-        const maxTextWidth = node.width - avatarSize - 25;
+        // Word wrapping for long names
+        const maxWidth = node.width - avatarSize - 26;
         const words = person.fullName.split(' ');
         let line = '';
         let textY = node.y + 12;
@@ -144,7 +191,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         for (let n = 0; n < words.length; n++) {
           const testLine = line + words[n] + ' ';
           const metrics = ctx.measureText(testLine);
-          if (metrics.width > maxTextWidth && n > 0) {
+          if (metrics.width > maxWidth && n > 0) {
             ctx.fillText(line.trim(), avatarX - 8, textY);
             line = words[n] + ' ';
             textY += 16;
@@ -215,7 +262,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Update Live Preview when options change
   useEffect(() => {
-    if (!previewCanvasRef.current || fullLayout.nodes.length === 0) return;
+    if (exportType === 'json' || !previewCanvasRef.current || fullLayout.nodes.length === 0) return;
     renderTreeToCanvas(previewCanvasRef.current, fullLayout, 0.5, bgType === 'transparent');
   }, [exportType, selectedView, bgType, fullLayout]);
 
@@ -228,7 +275,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const offscreenCanvas = document.createElement('canvas');
       const scale = pngScale;
 
-      // Check max canvas dimensions (standard browsers support up to 16,384px)
+      // Check max canvas dimensions
       const targetW = fullLayout.bounds.width * scale;
       const targetH = fullLayout.bounds.height * scale;
 
@@ -257,47 +304,58 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // Execute Single A4 Page Export (PDF)
+  // Execute Single A4 PDF Export
   const handleExportSingleA4 = async () => {
     setIsGenerating(true);
-    setGenerationProgress('מעבד דף A4 יחיד...');
+    setGenerationProgress('מכין מסמך PDF (A4 בודד)...');
 
     try {
-      const { width: tw, height: th } = fullLayout.bounds;
+      const isLandscape =
+        a4Orientation === 'landscape' ||
+        (a4Orientation === 'auto' && fullLayout.bounds.width >= fullLayout.bounds.height);
 
-      // Determine orientation: A4 is 297mm x 210mm
-      let isLandscape = tw > th;
-      if (a4Orientation === 'portrait') isLandscape = false;
-      if (a4Orientation === 'landscape') isLandscape = true;
-
+      const orientation = isLandscape ? 'landscape' : 'portrait';
       const pdf = new jsPDF({
-        orientation: isLandscape ? 'landscape' : 'portrait',
+        orientation,
         unit: 'mm',
         format: 'a4',
       });
 
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pageWidth = isLandscape ? 297 : 210;
+      const pageHeight = isLandscape ? 210 : 297;
       const margin = 10;
-      const availW = pageWidth - margin * 2;
-      const availH = pageHeight - margin * 2;
+      const headerHeight = 15;
 
-      // Calculate scale to fit
-      const scaleRatio = Math.min(availW / tw, availH / th);
+      const availWidth = pageWidth - margin * 2;
+      const availHeight = pageHeight - margin * 2 - headerHeight;
 
-      // Render tree to canvas
-      const canvas = document.createElement('canvas');
-      const renderScale = 2; // high-dpi
-      await renderTreeToCanvas(canvas, fullLayout, renderScale, false);
+      // Calculate uniform scale factor to fit
+      const scaleX = availWidth / fullLayout.bounds.width;
+      const scaleY = availHeight / fullLayout.bounds.height;
+      const fitScale = Math.min(scaleX, scaleY);
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const imgW = tw * scaleRatio;
-      const imgH = th * scaleRatio;
-      const offsetX = margin + (availW - imgW) / 2;
-      const offsetY = margin + (availH - imgH) / 2;
+      // Render tree to canvas at 2x print density
+      const printScaleFactor = fitScale * 3.78 * 2;
+      const offscreenCanvas = document.createElement('canvas');
+      await renderTreeToCanvas(offscreenCanvas, fullLayout, printScaleFactor, false);
 
-      pdf.addImage(imgData, 'JPEG', offsetX, offsetY, imgW, imgH);
-      pdf.save('ilan-yehuda-single-a4.pdf');
+      const imgData = offscreenCanvas.toDataURL('image/jpeg', 0.95);
+
+      // Center image in page
+      const renderW = fullLayout.bounds.width * fitScale;
+      const renderH = fullLayout.bounds.height * fitScale;
+      const posX = margin + (availWidth - renderW) / 2;
+      const posY = margin + headerHeight + (availHeight - renderH) / 2;
+
+      // Header title
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('The Yehuda Family Tree', pageWidth / 2, margin + 8, { align: 'center' });
+
+      // Add image
+      pdf.addImage(imgData, 'JPEG', posX, posY, renderW, renderH);
+
+      pdf.save('ilan-yehuda-a4.pdf');
     } catch (err: any) {
       alert('שגיאה בהפקת PDF: ' + err.message);
     } finally {
@@ -306,85 +364,47 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // Execute Multi-Page A4 Width Export (רוחב A4 יחיד, אורך רב־עמודי)
+  // Execute Multi-Page A4 PDF Export
   const handleExportMultiPageA4 = async () => {
     setIsGenerating(true);
-    setGenerationProgress('מחשב חלוקת עמודים אנכית ללא חיתוך כרטיסים...');
+    setGenerationProgress('מחשב חלוקה אופטימלית לעמודי A4...');
 
     try {
-      const isLandscape = a4Orientation === 'landscape';
       const pdf = new jsPDF({
-        orientation: isLandscape ? 'landscape' : 'portrait',
+        orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
       });
 
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 10;
-      const availW = pageWidth - margin * 2;
-      const headerH = 15;
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 12;
+      const headerH = 12;
       const footerH = 10;
-      const contentH = pageHeight - margin * 2 - headerH - footerH;
 
-      // Scale strictly to match A4 available width
+      const availW = pageWidth - margin * 2;
+      const availH = pageHeight - margin * 2 - headerH - footerH;
+
+      // Width fits on A4 page
       const scaleToWidth = availW / fullLayout.bounds.width;
-      const treeUnitHeight = fullLayout.bounds.height;
-      const scaledTotalHeight = treeUnitHeight * scaleToWidth;
+      const naturalHeightMm = fullLayout.bounds.height * scaleToWidth;
 
-      // Page breaks calculation:
-      // We must NEVER cut a person card horizontally!
-      const pageCuts: number[] = [fullLayout.bounds.minY];
-      let currentTop = fullLayout.bounds.minY;
-      const sliceHeightInTreeUnits = contentH / scaleToWidth;
+      // Determine number of vertical pages
+      const totalPages = Math.max(1, Math.ceil(naturalHeightMm / availH));
 
-      while (currentTop < fullLayout.bounds.maxY) {
-        let proposedBottom = currentTop + sliceHeightInTreeUnits;
-
-        if (proposedBottom >= fullLayout.bounds.maxY) {
-          pageCuts.push(fullLayout.bounds.maxY);
-          break;
-        }
-
-        // Check if any card is cut by proposedBottom
-        let safeCutY = proposedBottom;
-        for (const node of fullLayout.nodes) {
-          const nodeTop = node.y;
-          const nodeBottom = node.y + node.height;
-
-          // If card crosses proposedBottom
-          if (nodeTop < proposedBottom && nodeBottom > proposedBottom) {
-            // Push cut above this card
-            safeCutY = Math.min(safeCutY, nodeTop - 15);
-          }
-        }
-
-        // Avoid infinite loop if card is unusually tall
-        if (safeCutY <= currentTop + 30) {
-          safeCutY = proposedBottom;
-        }
-
-        pageCuts.push(safeCutY);
-        currentTop = safeCutY;
-      }
-
-      const totalPages = pageCuts.length - 1;
-
-      // Render each page slice
       for (let p = 0; p < totalPages; p++) {
-        if (p > 0) pdf.addPage();
+        if (p > 0) pdf.addPage('a4', 'portrait');
 
-        setGenerationProgress(`מעבד עמוד ${p + 1} מתוך ${totalPages}...`);
+        setGenerationProgress(`מייצר עמוד ${p + 1} מתוך ${totalPages}...`);
 
-        const sliceMinY = pageCuts[p];
-        const sliceMaxY = pageCuts[p + 1];
-        const sliceHeight = sliceMaxY - sliceMinY;
+        const sliceMinY = fullLayout.bounds.minY + (p * (fullLayout.bounds.height / totalPages));
+        const sliceHeight = fullLayout.bounds.height / totalPages;
 
         const sliceCanvas = document.createElement('canvas');
         await renderTreeToCanvas(
           sliceCanvas,
           fullLayout,
-          2, // High resolution
+          scaleToWidth * 3.78 * 2,
           false,
           {
             minX: fullLayout.bounds.minX,
@@ -432,16 +452,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     window.print();
   };
 
-  // Readability factor score for single A4
-  const singleA4ScaleFactor = Math.min(
-    (297 - 20) / fullLayout.bounds.width,
-    (210 - 20) / fullLayout.bounds.height
-  );
-  const isScaleTooSmall = singleA4ScaleFactor < 0.35 && fullLayout.nodes.length > 25;
+  const personsCount = Object.keys(treeData.persons).length;
+  const relsCount = treeData.relationships.length;
+  const spousesCount = treeData.relationships.filter(r => r.type === 'spouse').length;
+  const parentChildCount = treeData.relationships.filter(r => r.type === 'parent-child').length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in fade-in duration-150">
+    <div
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 cursor-pointer"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] sm:max-h-[90vh] shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in fade-in duration-150 cursor-default"
+      >
         {/* Header */}
         <div className="p-5 border-b border-stone-200 flex items-center justify-between bg-stone-50">
           <div>
@@ -449,7 +475,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               ייצוא והדפסה של אילן היוחסין
             </h2>
             <p className="text-xs text-stone-500 mt-0.5">
-              ייצוא תמונה מלאה או הפקת מסמכי A4 מותאמים להדפסה
+              ייצוא קובץ נתונים JSON, תמונת PNG מלאה או הפקת מסמכי A4 מותאמים להדפסה
             </p>
           </div>
           <button
@@ -470,6 +496,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 פורמט ייצוא:
               </label>
               <div className="space-y-2">
+                {/* JSON Data Export Option */}
+                <button
+                  onClick={() => setExportType('json')}
+                  className={`w-full text-right p-3 rounded-xl border text-xs transition-colors flex items-start gap-2.5 ${
+                    exportType === 'json'
+                      ? 'border-stone-900 bg-stone-50 font-medium'
+                      : 'border-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  <FileCode className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-stone-900">קובץ נתוני JSON (ייצוא וגיבוי)</div>
+                    <div className="text-[11px] text-stone-500">
+                      ייצוא כל הנתונים, האנשים והקשרים (כולל ריבוי בני זוג) כקובץ JSON
+                    </div>
+                  </div>
+                </button>
+
                 <button
                   onClick={() => setExportType('png')}
                   className={`w-full text-right p-3 rounded-xl border text-xs transition-colors flex items-start gap-2.5 ${
@@ -523,23 +567,77 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
             </div>
 
-            {/* Tree View Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-stone-800 mb-1.5">
-                תצוגת העץ לייצוא:
-              </label>
-              <select
-                value={selectedView}
-                onChange={e => setSelectedView(e.target.value as ViewType)}
-                className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none"
-              >
-                <option value="detailed-vertical">תצוגה מלאה ומפורטת (עם תמונות ותאריכים)</option>
-                <option value="compact-vertical">תצוגה מקוצרת לאורך (שמות בלבד)</option>
-                <option value="compact-horizontal">תצוגה מקוצרת לרוחב RTL (שמות בלבד)</option>
-              </select>
-            </div>
+            {/* Options for JSON Export */}
+            {exportType === 'json' && (
+              <div className="space-y-3 pt-2 border-t border-stone-100">
+                <label className="block text-xs font-semibold text-stone-800">
+                  מבנה קובץ ה-JSON:
+                </label>
+                <div className="space-y-2">
+                  <label
+                    onClick={() => setJsonFormat('standard')}
+                    className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 cursor-pointer transition-colors ${
+                      jsonFormat === 'standard' ? 'border-amber-600 bg-amber-50/50' : 'border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="jsonFormat"
+                      checked={jsonFormat === 'standard'}
+                      onChange={() => setJsonFormat('standard')}
+                      className="mt-0.5 text-amber-600"
+                    />
+                    <div>
+                      <div className="font-bold text-stone-900">פורמט גיבוי מלא (תואם שחזור 100%)</div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        כולל מזהים ייחודיים, קשרי משפחה מלאים, תמונות והגדרות מטא-דאטה.
+                      </div>
+                    </div>
+                  </label>
 
-            {/* Format Specific Options */}
+                  <label
+                    onClick={() => setJsonFormat('readable')}
+                    className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 cursor-pointer transition-colors ${
+                      jsonFormat === 'readable' ? 'border-amber-600 bg-amber-50/50' : 'border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="jsonFormat"
+                      checked={jsonFormat === 'readable'}
+                      onChange={() => setJsonFormat('readable')}
+                      className="mt-0.5 text-amber-600"
+                    />
+                    <div>
+                      <div className="font-bold text-stone-900">פורמט קריא ומובנה (רשימת אנשים וקשרים)</div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        מערך קריא של אנשים עם רשימת בני/בנות זוג, ילדים, והורים בשמות ברורים.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Tree View Selection (for visual exports) */}
+            {exportType !== 'json' && (
+              <div>
+                <label className="block text-xs font-semibold text-stone-800 mb-1.5">
+                  תצוגת העץ לייצוא:
+                </label>
+                <select
+                  value={selectedView}
+                  onChange={e => setSelectedView(e.target.value as ViewType)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none"
+                >
+                  <option value="detailed-vertical">תצוגה מלאה ומפורטת (עם תמונות ותאריכים)</option>
+                  <option value="compact-vertical">תצוגה מקוצרת לאורך (שמות בלבד)</option>
+                  <option value="compact-horizontal">תצוגה מקוצרת לרוחב RTL (שמות בלבד)</option>
+                </select>
+              </div>
+            )}
+
+            {/* Format Specific Options for PNG */}
             {exportType === 'png' && (
               <div className="space-y-3 pt-1 border-t border-stone-100">
                 <div>
@@ -599,79 +697,49 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
               </div>
             )}
-
-            {(exportType === 'a4-single' || exportType === 'a4-multi') && (
-              <div className="space-y-3 pt-1 border-t border-stone-100">
-                <div>
-                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                    כיוון הדף:
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => setA4Orientation('auto')}
-                      className={`py-1.5 text-xs rounded-lg border ${
-                        a4Orientation === 'auto' ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 border-stone-200'
-                      }`}
-                    >
-                      אוטומטי
-                    </button>
-                    <button
-                      onClick={() => setA4Orientation('landscape')}
-                      className={`py-1.5 text-xs rounded-lg border ${
-                        a4Orientation === 'landscape' ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 border-stone-200'
-                      }`}
-                    >
-                      לרוחב
-                    </button>
-                    <button
-                      onClick={() => setA4Orientation('portrait')}
-                      className={`py-1.5 text-xs rounded-lg border ${
-                        a4Orientation === 'portrait' ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 border-stone-200'
-                      }`}
-                    >
-                      לאורך
-                    </button>
-                  </div>
-                </div>
-
-                {/* Readability Notice for Single A4 */}
-                {exportType === 'a4-single' && isScaleTooSmall && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1.5">
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <AlertTriangle className="w-4 h-4 text-amber-700" />
-                      <span>חיווי גודל טקסט: קנה מידה קטן</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      העץ גדול והטקסט יוקטן משמעותית כדי להיכנס לדף A4 בודד ({Math.round(singleA4ScaleFactor * 100)}%).
-                      מומלץ לשקול מעבר ל<strong>תצוגה מקוצרת (שמות בלבד)</strong> או ל<strong>הדפסה רב־עמודית</strong>.
-                    </p>
-                    <button
-                      onClick={() => setSelectedView('compact-vertical')}
-                      className="text-[11px] font-bold text-amber-800 underline hover:text-amber-950"
-                    >
-                      עבור לתצוגת שמות בלבד
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Right Column (Live Preview): 7 cols */}
-          <div className="md:col-span-7 bg-stone-100 rounded-xl p-4 flex flex-col items-center justify-center border border-stone-200 min-h-[300px]">
-            <div className="text-[11px] text-stone-500 font-mono mb-2 self-start flex items-center justify-between w-full">
-              <span>תצוגה מקדימה של הפריסה המלאה</span>
-              <span>
-                {fullLayout.nodes.length} אנשים | {Math.round(fullLayout.bounds.width)}x{Math.round(fullLayout.bounds.height)}px
-              </span>
-            </div>
+          {/* Right Column: Live Preview / JSON Code viewer (7 cols) */}
+          <div className="md:col-span-7 bg-stone-100 rounded-xl p-4 flex flex-col items-center justify-center border border-stone-200 min-h-[320px]">
+            {exportType === 'json' ? (
+              <div className="w-full h-full flex flex-col">
+                <div className="text-[11px] text-stone-600 font-mono mb-2 flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Code2 className="w-3.5 h-3.5 text-amber-700" />
+                    <span>תצוגת קוד JSON ({personsCount} אנשים | {relsCount} קשרים)</span>
+                  </span>
+                  <button
+                    onClick={handleCopyJson}
+                    className="px-2.5 py-1 bg-white hover:bg-stone-50 border border-stone-300 rounded text-stone-700 text-[11px] flex items-center gap-1 transition-colors"
+                  >
+                    {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{isCopied ? 'הועתק!' : 'העתק JSON'}</span>
+                  </button>
+                </div>
 
-            <div className="relative max-w-full max-h-[360px] overflow-auto bg-white p-2 rounded-lg shadow-inner border border-stone-200 flex items-center justify-center">
-              <canvas
-                ref={previewCanvasRef}
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
+                <div className="relative flex-1 w-full max-h-[340px] bg-stone-900 rounded-lg p-3 overflow-auto border border-stone-800 shadow-inner">
+                  <pre className="text-xs font-mono text-emerald-400 text-left whitespace-pre" dir="ltr">
+                    {jsonOutputString}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-[11px] text-stone-500 font-mono mb-2 self-start flex items-center justify-between w-full">
+                  <span>תצוגה מקדימה של הפריסה המלאה</span>
+                  <span>
+                    {fullLayout.nodes.length} אנשים | {Math.round(fullLayout.bounds.width)}x{Math.round(fullLayout.bounds.height)}px
+                  </span>
+                </div>
+
+                <div className="relative max-w-full max-h-[340px] overflow-auto bg-white p-2 rounded-lg shadow-inner border border-stone-200 flex items-center justify-center">
+                  <canvas
+                    ref={previewCanvasRef}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -688,6 +756,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             >
               סגור
             </button>
+
+            {exportType === 'json' && (
+              <>
+                <button
+                  onClick={handleCopyJson}
+                  className="px-3.5 py-2 text-xs font-medium text-stone-800 bg-white border border-stone-300 hover:bg-stone-100 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCopied ? 'הועתק ללוח!' : 'העתק תוכן JSON'}</span>
+                </button>
+                <button
+                  onClick={handleDownloadJson}
+                  className="px-4 py-2 text-xs font-medium text-white bg-stone-900 hover:bg-stone-800 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>הורד קובץ JSON</span>
+                </button>
+              </>
+            )}
 
             {exportType === 'png' && (
               <button

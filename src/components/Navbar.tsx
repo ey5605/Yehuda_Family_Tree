@@ -17,7 +17,9 @@ import {
   Layers,
   LayoutGrid,
   Menu,
-  X
+  X,
+  CloudUpload,
+  RefreshCw
 } from 'lucide-react';
 import { ViewType, FamilyTreeData, Person } from '../types/family';
 import { SaveStatus } from '../utils/storage';
@@ -39,6 +41,8 @@ interface NavbarProps {
   saveStatus: SaveStatus;
   isReadOnly: boolean;
   onToggleReadOnly: () => void;
+  onSyncToServer?: () => void;
+  onRefreshFromServer?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -58,6 +62,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   saveStatus,
   isReadOnly,
   onToggleReadOnly,
+  onSyncToServer,
+  onRefreshFromServer,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -109,25 +115,36 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="truncate">{personCount} נפשות</span>
               <span aria-hidden="true">·</span>
               {saveStatus === 'saved' && (
-                <span className="text-emerald-700 flex items-center gap-1 shrink-0">
+                <span className="text-emerald-700 flex items-center gap-1 shrink-0" title="כל הנתונים שמורים ומסונכרנים בשרת">
                   <CheckCircle2 className="w-3 h-3" />
-                  <span className="hidden xs:inline">נשמר</span>
+                  <span className="hidden xs:inline">שמור בשרת</span>
                 </span>
               )}
               {saveStatus === 'saving' && (
                 <span className="text-amber-700 flex items-center gap-1 shrink-0">
                   <Clock className="w-3 h-3 animate-spin" />
-                  <span className="hidden xs:inline">שומר...</span>
+                  <span className="hidden xs:inline">שומר בשרת...</span>
                 </span>
               )}
               {saveStatus === 'error' && (
-                <span className="text-rose-700 flex items-center gap-1 shrink-0">
+                <button
+                  onClick={onSyncToServer}
+                  className="text-rose-700 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
+                  title="שגיאת שמירה - לחץ לניסיון חוזר"
+                >
                   <AlertCircle className="w-3 h-3" />
-                  <span className="hidden xs:inline">שגיאה</span>
-                </span>
+                  <span className="hidden xs:inline">שגיאה (נסה שוב)</span>
+                </button>
               )}
               {saveStatus === 'offline' && (
-                <span className="text-stone-500 shrink-0">מקומי</span>
+                <button
+                  onClick={onSyncToServer}
+                  className="text-amber-800 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1 shrink-0 cursor-pointer text-[10px]"
+                  title="שמור מקומית בלבד - לחץ לסנכרון לשרת"
+                >
+                  <CloudUpload className="w-3 h-3 text-amber-600" />
+                  <span>סנכרן לשרת</span>
+                </button>
               )}
             </div>
           </div>
@@ -262,7 +279,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Desktop Import Button */}
           <button
             onClick={onOpenImport}
-            title="ייבוא מ-Google Drawings או קובץ"
+            title="ייבוא מקובץ (JSON / SVG)"
             className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors whitespace-nowrap"
           >
             <Upload className="w-3.5 h-3.5" />
@@ -384,8 +401,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Mobile Slide-Over Menu Drawer */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-stone-900/40 backdrop-blur-xs flex justify-start">
-          <div className="w-72 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col overflow-y-auto p-4 space-y-4 animate-in slide-in-from-right duration-200">
+        <div
+          onClick={e => {
+            if (e.target === e.currentTarget) setIsMobileMenuOpen(false);
+          }}
+          className="lg:hidden fixed inset-0 z-40 bg-stone-900/40 backdrop-blur-xs flex justify-start cursor-pointer"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-72 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col overflow-y-auto p-4 space-y-4 animate-in slide-in-from-right duration-200 cursor-default"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-stone-200">
               <div className="font-hebrew-serif font-bold text-base text-stone-900">
                 תפריט פעולות
@@ -397,6 +422,43 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Cloud & Database Sync Controls */}
+            {(onSyncToServer || onRefreshFromServer) && (
+              <div className="space-y-1.5 p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80">
+                <div className="text-[11px] font-bold text-amber-900 flex items-center justify-between">
+                  <span>סנכרון ומסד נתונים</span>
+                  <span className="text-[10px] font-normal text-amber-700">
+                    {saveStatus === 'saved' ? 'שמור בשרת ✓' : saveStatus === 'saving' ? 'שומר...' : 'שמור מקומית'}
+                  </span>
+                </div>
+                {onSyncToServer && (
+                  <button
+                    onClick={() => {
+                      onSyncToServer();
+                    }}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-amber-950 bg-white hover:bg-amber-100/70 rounded-lg border border-amber-300 font-medium text-right transition-colors shadow-xs"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CloudUpload className="w-3.5 h-3.5 text-amber-700" />
+                      <span>שמור וסנכרן נתונים לשרת</span>
+                    </div>
+                  </button>
+                )}
+                {onRefreshFromServer && (
+                  <button
+                    onClick={() => {
+                      onRefreshFromServer();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-100 rounded-lg border border-stone-200 font-medium text-right transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-stone-600" />
+                    <span>טען מחדש נתונים מהשרת</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* View Switcher on Mobile */}
             <div className="space-y-1.5">
@@ -459,7 +521,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-800 bg-stone-50 hover:bg-stone-100 rounded-lg border border-stone-200 font-medium text-right"
               >
                 <Upload className="w-4 h-4 text-stone-600" />
-                <span>ייבוא מ-Google Drawings / קובץ</span>
+                <span>ייבוא מקובץ (JSON / SVG)</span>
               </button>
 
               <button

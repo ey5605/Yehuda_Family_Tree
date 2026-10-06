@@ -339,13 +339,21 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const deletionImpact = getDeletionImpact(treeData, person.id);
 
   return (
-    <div className="fixed inset-0 z-40 bg-stone-900/40 backdrop-blur-xs flex justify-end">
+    <div
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-40 bg-stone-900/40 backdrop-blur-xs flex justify-end cursor-pointer"
+    >
       {/* Sliding Drawer */}
-      <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-hidden border-r border-stone-200 animate-in slide-in-from-left duration-200">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-hidden border-r border-stone-200 animate-in slide-in-from-left duration-200 cursor-default"
+      >
         {/* Header */}
-        <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-stone-50">
+        <div className="p-3.5 sm:p-4 border-b border-stone-200 flex items-center justify-between bg-stone-50 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="font-hebrew-serif font-bold text-lg text-stone-900">
+            <span className="font-hebrew-serif font-bold text-base sm:text-lg text-stone-900">
               פרטי בן/בת משפחה
             </span>
             {isReadOnly && (
@@ -354,16 +362,28 @@ export const PersonModal: React.FC<PersonModalProps> = ({
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={handleSave}
+                className="px-3 py-1.5 text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-white rounded-lg transition-colors shadow-xs"
+              >
+                שמור
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Form Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6 pb-12 sm:pb-6">
           <form onSubmit={handleSave} className="space-y-5">
             {/* Photo Avatar & Upload */}
             <div className="flex items-center gap-4">
@@ -431,7 +451,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                 value={fullName}
                 onChange={e => setFullName(e.target.value)}
                 placeholder="לדוגמה: ישראל יהודה"
-                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100"
+                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100"
               />
               {duplicateNames.length > 0 && (
                 <div className="mt-1.5 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200 flex items-start gap-1.5">
@@ -456,7 +476,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                   value={birthDate}
                   onChange={e => setBirthDate(e.target.value)}
                   placeholder="1932 או 1932-05 או 1932-05-14"
-                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
                 />
                 <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer text-xs text-stone-600">
                   <input
@@ -481,7 +501,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                   value={deathDate}
                   onChange={e => setDeathDate(e.target.value)}
                   placeholder="1998 או 1998-11"
-                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none font-mono disabled:bg-stone-100"
                 />
                 <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer text-xs text-stone-600">
                   <input
@@ -515,7 +535,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="מידע ביוגרפי, עיסוק, מקום לידה ועוד..."
-                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100 resize-none"
+                className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100 resize-none"
               />
             </div>
 

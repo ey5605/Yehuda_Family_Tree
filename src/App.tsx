@@ -10,6 +10,7 @@ import { computeTreeLayout } from './utils/treeLayout';
 import {
   loadFamilyTree,
   saveFamilyTree,
+  fetchServerTree,
   EMPTY_TREE,
   SaveStatus
 } from './utils/storage';
@@ -91,6 +92,30 @@ export default function App() {
     setTreeData(next);
     saveFamilyTree(next);
   }, [future, treeData, isReadOnly]);
+
+  // Manual sync to server
+  const handleSyncToServer = useCallback(async () => {
+    setSaveStatus('saving');
+    const success = await saveFamilyTree(treeData);
+    setSaveStatus(success ? 'saved' : 'offline');
+    return success;
+  }, [treeData]);
+
+  // Pull latest data directly from server
+  const handleRefreshFromServer = useCallback(async () => {
+    setSaveStatus('saving');
+    const serverTree = await fetchServerTree();
+    if (serverTree && serverTree.persons && Object.keys(serverTree.persons).length > 0) {
+      setTreeData(serverTree);
+      originalTreeBackupRef.current = serverTree;
+      setSaveStatus('saved');
+      setFitTrigger(t => t + 1);
+      return true;
+    } else {
+      setSaveStatus('saved');
+      return false;
+    }
+  }, []);
 
   // Keyboard shortcuts (Ctrl+Z, Ctrl+Y, Esc)
   useEffect(() => {
@@ -434,6 +459,8 @@ export default function App() {
         saveStatus={saveStatus}
         isReadOnly={isReadOnly}
         onToggleReadOnly={() => setIsReadOnly(r => !r)}
+        onSyncToServer={handleSyncToServer}
+        onRefreshFromServer={handleRefreshFromServer}
       />
 
       {/* Main Interactive Tree Area */}
@@ -455,6 +482,7 @@ export default function App() {
           onAddFirstPerson={handleAddNewPerson}
           onOpenImport={() => setIsImportModalOpen(true)}
           onLoadSampleTree={handleLoadSampleTree}
+          onRefreshFromServer={handleRefreshFromServer}
           onViewChange={setViewType}
         />
       </main>
