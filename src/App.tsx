@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { CloudOff, RefreshCw, X } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { TreeCanvas } from './components/TreeCanvas';
 import { PersonModal } from './components/PersonModal';
@@ -13,6 +14,7 @@ import {
   saveFamilyTree,
   fetchServerTree,
   mergeFamilyTrees,
+  hasUnsyncedChanges,
   EMPTY_TREE,
   SaveStatus
 } from './utils/storage';
@@ -36,6 +38,8 @@ export default function App() {
 
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState<boolean>(false);
+  const [isSyncingNow, setIsSyncingNow] = useState<boolean>(false);
   const [isReadOnly, setIsReadOnly] = useState<boolean>(true);
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState<boolean>(false);
   const [fitTrigger, setFitTrigger] = useState(1);
@@ -44,9 +48,14 @@ export default function App() {
   const [history, setHistory] = useState<FamilyTreeData[]>([]);
   const [future, setFuture] = useState<FamilyTreeData[]>([]);
   const originalTreeBackupRef = useRef<FamilyTreeData | null>(null);
+  const treeDataRef = useRef<FamilyTreeData>(treeData);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isPersonModalOpenRef = useRef(false);
   const saveStatusRef = useRef<SaveStatus>('saved');
+
+  useEffect(() => {
+    treeDataRef.current = treeData;
+  }, [treeData]);
 
   useEffect(() => {
     isPersonModalOpenRef.current = isPersonModalOpen;
@@ -62,6 +71,10 @@ export default function App() {
       const loaded = await loadFamilyTree();
       setTreeData(loaded);
       originalTreeBackupRef.current = loaded;
+      if (hasUnsyncedChanges()) {
+        setSaveStatus('offline');
+        setIsSyncBannerDismissed(false);
+      }
       setFitTrigger(t => t + 1);
     }
     init();
@@ -101,9 +114,71 @@ export default function App() {
     };
   }, []);
 
-  // Push new state with undo record
+  // Flush pending save immediately when switching apps, locking screen, or closing tab (keepalive resilience)
+  useEffect(() => {
+    const handleFlushSave = () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (treeDataRef.current) {
+        saveFamilyTree(treeDataRef.current, { keepalive: true });
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleFlushSave();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleFlushSave);
+    window.addEventListener('pagehide', handleFlushSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleFlushSave);
+      window.removeEventListener('pagehide', handleFlushSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // Automatic retry sync when device comes back online or periodically while offline
+  useEffect(() => {
+    const attemptSync = async () => {
+      if (saveStatusRef.current === 'offline' || hasUnsyncedChanges()) {
+        if (treeDataRef.current && navigator.onLine) {
+          setSaveStatus('saving');
+          const success = await saveFamilyTree(treeDataRef.current);
+          setSaveStatus(success ? 'saved' : 'offline');
+          if (success) {
+            setIsSyncBannerDismissed(false);
+          }
+        }
+      }
+    };
+
+    const handleOnline = () => {
+      attemptSync();
+    };
+
+    window.addEventListener('online', handleOnline);
+
+    const retryInterval = setInterval(() => {
+      if (saveStatusRef.current === 'offline' || hasUnsyncedChanges()) {
+        attemptSync();
+      }
+    }, 6000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(retryInterval);
+    };
+  }, []);
+
+  // Push new state with undo record (immediate save by default for maximum cross-device reliability)
   const updateTreeData = useCallback(
-    (newTree: FamilyTreeData, recordHistory = true, immediateSave = false) => {
+    (newTree: FamilyTreeData, recordHistory = true, immediateSave = true) => {
       // CRITICAL: Always generate a fresh lastUpdated timestamp on the tree state
       const treeWithFreshTimestamp: FamilyTreeData = {
         ...newTree,
@@ -127,12 +202,18 @@ export default function App() {
       if (immediateSave) {
         saveFamilyTree(treeWithFreshTimestamp).then(success => {
           setSaveStatus(success ? 'saved' : 'offline');
+          if (!success) {
+            setIsSyncBannerDismissed(false);
+          }
         });
       } else {
         saveTimerRef.current = setTimeout(async () => {
           const success = await saveFamilyTree(treeWithFreshTimestamp);
           setSaveStatus(success ? 'saved' : 'offline');
-        }, 350);
+          if (!success) {
+            setIsSyncBannerDismissed(false);
+          }
+        }, 200);
       }
     },
     [treeData]
@@ -541,6 +622,58 @@ export default function App() {
         onSyncToServer={handleSyncToServer}
         onRefreshFromServer={handleRefreshFromServer}
       />
+
+      {/* Prominent Offline & Pending Sync Warning Banner (Items 1 & 2) */}
+      {(saveStatus === 'offline' || saveStatus === 'error') && !isSyncBannerDismissed && (
+        <div className="bg-amber-50 border-b border-amber-300 px-4 py-2.5 flex items-center justify-between text-amber-950 text-xs sm:text-sm shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 bg-amber-100 border border-amber-300 rounded-full text-amber-800 shrink-0">
+              <CloudOff className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-amber-950 flex items-center gap-2 flex-wrap">
+                <span>שינויים אחרונים שמורים במכשיר זה בלבד (טרם סונכרנו לשרת המרכזי)</span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-900 border border-amber-300">
+                  ממתין לסנכרון
+                </span>
+              </div>
+              <div className="text-amber-800 text-[11px] sm:text-xs">
+                המידע שמור בבטחה במכשיר. ברגע שיחודש החיבור לרשת, המערכת תסנכרן אותו אוטומטית לכל שאר המכשירים.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 mr-3">
+            <button
+              type="button"
+              onClick={async () => {
+                setIsSyncingNow(true);
+                setSaveStatus('saving');
+                try {
+                  const ok = await handleSyncToServer();
+                  if (ok) {
+                    setIsSyncBannerDismissed(false);
+                  }
+                } finally {
+                  setIsSyncingNow(false);
+                }
+              }}
+              disabled={isSyncingNow}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-md font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
+              <span>{isSyncingNow ? 'מסנכרן...' : 'סנכרן לשרת עכשיו'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSyncBannerDismissed(true)}
+              className="p-1 text-amber-700 hover:text-amber-900 hover:bg-amber-200/50 rounded transition-colors cursor-pointer"
+              title="סגור הודעה"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Interactive Tree Area */}
       <main className="flex-1 relative overflow-hidden">

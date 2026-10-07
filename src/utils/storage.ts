@@ -135,7 +135,17 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
 
     if (localHasExtraPhotos || localHasExtraGenders || localTime > serverTime) {
       // Local has modifications not yet committed to server! Sync up immediately!
-      saveFamilyTree(merged);
+      saveFamilyTree(merged).then(ok => {
+        if (!ok) {
+          try {
+            localStorage.setItem('has_unsynced_changes', 'true');
+          } catch {}
+        }
+      });
+    } else {
+      try {
+        localStorage.removeItem('has_unsynced_changes');
+      } catch {}
     }
 
     try {
@@ -148,6 +158,9 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
 
   // Case 2: Server not reachable (offline device) but local has data
   if (localData && localCount > 0) {
+    try {
+      localStorage.setItem('has_unsynced_changes', 'true');
+    } catch {}
     return localData;
   }
 
@@ -168,8 +181,17 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
   return EMPTY_TREE;
 }
 
-// Save tree both to server and to localStorage
-export async function saveFamilyTree(data: FamilyTreeData): Promise<boolean> {
+// Check if device has modifications pending server sync
+export function hasUnsyncedChanges(): boolean {
+  try {
+    return localStorage.getItem('has_unsynced_changes') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// Save tree both to server and to localStorage with optional keepalive resilience
+export async function saveFamilyTree(data: FamilyTreeData, options?: { keepalive?: boolean }): Promise<boolean> {
   const updatedData = {
     ...data,
     metadata: {
@@ -187,19 +209,54 @@ export async function saveFamilyTree(data: FamilyTreeData): Promise<boolean> {
 
   // Try saving to server
   try {
-    const res = await fetch('/api/tree', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(updatedData),
-    });
+    const bodyStr = JSON.stringify(updatedData);
+    let res: Response;
+
+    // Use keepalive if requested (e.g. on page unload / app switch)
+    if (options?.keepalive) {
+      try {
+        res = await fetch('/api/tree', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          keepalive: true,
+          body: bodyStr,
+        });
+      } catch {
+        // Fallback if browser limits keepalive payload size
+        res = await fetch('/api/tree', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: bodyStr,
+        });
+      }
+    } else {
+      res = await fetch('/api/tree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: bodyStr,
+      });
+    }
+
     if (!res.ok) {
       console.warn('Server save returned status:', res.status, res.statusText);
+      try {
+        localStorage.setItem('has_unsynced_changes', 'true');
+      } catch {}
       return false;
     }
+
+    try {
+      localStorage.removeItem('has_unsynced_changes');
+    } catch {}
     return true;
   } catch (err) {
     console.warn('Server save failed, saved locally:', err);
+    try {
+      localStorage.setItem('has_unsynced_changes', 'true');
+    } catch {}
     return false;
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X,
   User,
@@ -144,6 +144,14 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const parents = getParents(treeData, person.id);
   const children = getChildren(treeData, person.id);
   const spouses = getSpouses(treeData, person.id);
+
+  // Sorted candidates list of existing persons in tree (alphabetically by Hebrew Alef-Bet)
+  const existingPersonsCandidates = useMemo(() => {
+    if (!person) return [];
+    return Object.values(treeData.persons)
+      .filter(p => p.id !== person.id)
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'he', { sensitivity: 'base' }));
+  }, [treeData.persons, person.id]);
 
   // Handle Photo File Upload with rock-solid FileReader & Canvas downscaling
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1013,14 +1021,12 @@ export const PersonModal: React.FC<PersonModalProps> = ({
                     }}
                     className="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none"
                   >
-                    <option value="">-- בחר אדם קיים מהרשימה --</option>
-                    {Object.values(treeData.persons)
-                      .filter(p => p.id !== person.id)
-                      .map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.fullName} {p.birthDate ? `(${p.birthDate.slice(0, 4)})` : ''}
-                        </option>
-                      ))}
+                    <option value="">-- בחר אדם קיים מהרשימה (ממוין לפי א'-ב') --</option>
+                    {existingPersonsCandidates.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.fullName} {p.birthDate ? `(${p.birthDate.slice(0, 4)})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

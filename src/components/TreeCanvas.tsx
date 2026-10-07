@@ -3,8 +3,6 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  FolderMinus,
-  FolderPlus,
   UserPlus,
   Upload,
   User,
@@ -12,11 +10,9 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  GitBranch,
-  Layers,
-  LayoutGrid,
   RefreshCw
 } from 'lucide-react';
+import { DetailedViewIcon, CompactVerticalIcon, CompactHorizontalIcon } from './ViewIcons';
 import { TreeLayout, LayoutNode, LayoutConnector, ViewType, FamilyTreeData } from '../types/family';
 import { formatDisplayDate } from '../utils/familyGraph';
 
@@ -761,9 +757,12 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               {/* Compact Horizontal View Card */}
               {viewType === 'compact-horizontal' && (
                 <div className="h-full px-3 py-1 flex items-center justify-between text-right">
-                  <span className="font-bold text-[17px] sm:text-[19px] text-stone-900 truncate flex-1 ml-1.5" title={person.fullName}>
+                  <div
+                    className="font-bold text-[22px] sm:text-[24px] text-stone-900 line-clamp-2 break-words leading-tight flex-1 ml-1.5"
+                    title={person.fullName}
+                  >
                     {person.fullName}
-                  </span>
+                  </div>
                   {(person.birthDate || person.deathDate) && (
                     <span className="text-[11px] text-stone-500 font-mono shrink-0 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">
                       {person.birthDate ? formatDisplayDate(person.birthDate, person.isBirthApproximate) : ''}
@@ -817,67 +816,69 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         ))}
       </div>
 
-      {/* Floating Bottom Canvas Controls */}
+      {/* Floating Bottom Canvas Controls (Mobile & Compact screen sizes) */}
       <div
         dir="rtl"
-        className="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-20 flex flex-wrap sm:flex-nowrap items-center justify-center gap-1.5 sm:gap-2 max-w-[calc(100vw-1rem)] select-none pb-[env(safe-area-inset-bottom)] pointer-events-auto"
+        className="absolute bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 lg:left-auto lg:right-6 lg:translate-x-0 z-20 flex flex-row flex-nowrap items-center justify-center gap-2 max-w-[calc(100vw-24px)] select-none pb-[env(safe-area-inset-bottom)] pointer-events-auto"
       >
-        {/* Mobile View Switcher */}
-        <div className="flex lg:hidden items-center gap-0.5 p-1 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-xl shadow-md">
+        {/* View Switcher Group (Shown on Mobile & screens where top bar switcher is hidden) */}
+        <div
+          role="group"
+          aria-label="מצבי תצוגה"
+          className="flex lg:hidden items-center gap-0.5 p-1 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-xl shadow-md shrink-0"
+        >
           <button
             type="button"
             onClick={() => onViewChange('detailed-vertical')}
-            className={`p-1.5 rounded-lg transition-colors ${viewType === 'detailed-vertical' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
-            title="מפורטת"
+            className={`p-1.5 rounded-lg transition-colors ${
+              viewType === 'detailed-vertical'
+                ? 'bg-stone-900 text-white shadow-xs'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
+            title="תצוגה מורחבת (מלאה)"
+            aria-label="תצוגה מורחבת"
           >
-            <Layers className="w-4 h-4" />
+            <DetailedViewIcon className="w-4 h-4" />
           </button>
           <button
             type="button"
             onClick={() => onViewChange('compact-vertical')}
-            className={`p-1.5 rounded-lg transition-colors ${viewType === 'compact-vertical' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
+            className={`p-1.5 rounded-lg transition-colors ${
+              viewType === 'compact-vertical'
+                ? 'bg-stone-900 text-white shadow-xs'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
             title="מקוצרת לאורך"
+            aria-label="מקוצרת לאורך"
           >
-            <GitBranch className="w-4 h-4" />
+            <CompactVerticalIcon className="w-4 h-4" />
           </button>
           <button
             type="button"
             onClick={() => onViewChange('compact-horizontal')}
-            className={`p-1.5 rounded-lg transition-colors ${viewType === 'compact-horizontal' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
-            title="מקוצרת לרוחב"
+            className={`p-1.5 rounded-lg transition-colors ${
+              viewType === 'compact-horizontal'
+                ? 'bg-stone-900 text-white shadow-xs'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
+            title="מקוצרת לרוחב (RTL)"
+            aria-label="מקוצרת לרוחב (RTL)"
           >
-            <LayoutGrid className="w-4 h-4" />
+            <CompactHorizontalIcon className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Tree Branch Expand / Collapse Controls */}
-        <div className="flex items-center gap-0.5 p-1 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-xl shadow-md">
-          <button
-            type="button"
-            onClick={onExpandAll}
-            title="הרחב את כל הענפים"
-            className="flex items-center gap-1 p-1.5 sm:px-2 sm:py-1.5 text-xs text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-          >
-            <FolderPlus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="hidden md:inline">הרחב הכול</span>
-          </button>
-          <button
-            type="button"
-            onClick={onCollapseBranches}
-            title="כווץ ענפים משניים"
-            className="flex items-center gap-1 p-1.5 sm:px-2 sm:py-1.5 text-xs text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-          >
-            <FolderMinus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="hidden md:inline">כווץ ענפים</span>
-          </button>
-        </div>
-
-        {/* Zoom Controls Bar */}
-        <div className="flex items-center gap-0.5 p-1 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-xl shadow-md">
+        {/* Zoom & Fit Controls Bar */}
+        <div
+          role="group"
+          aria-label="בקרות זום והתאמה למסך"
+          className="flex items-center gap-0.5 p-1 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-xl shadow-md shrink-0"
+        >
           <button
             type="button"
             onClick={zoomIn}
             title="הגדל (+)"
+            aria-label="הגדל"
             className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
           >
             <ZoomIn className="w-4 h-4" />
@@ -887,6 +888,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             type="button"
             onClick={resetZoom}
             title="לחץ לאיפוס ל-100%"
+            aria-label="איפוס ל-100%"
             className="px-1.5 text-xs font-mono font-medium text-stone-700 cursor-pointer hover:text-stone-900 select-none min-w-[38px] text-center"
           >
             {Math.round(scale * 100)}%
@@ -896,6 +898,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             type="button"
             onClick={zoomOut}
             title="הקטן (-)"
+            aria-label="הקטן"
             className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
           >
             <ZoomOut className="w-4 h-4" />
@@ -907,6 +910,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             type="button"
             onClick={() => fitToScreen(true)}
             title="מרכז והתאם למסך"
+            aria-label="מרכז והתאם למסך"
             className="p-1.5 text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors"
           >
             <Maximize2 className="w-4 h-4" />

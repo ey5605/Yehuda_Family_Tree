@@ -13,14 +13,12 @@ import {
   AlertCircle,
   Clock,
   Sparkles,
-  GitBranch,
-  Layers,
-  LayoutGrid,
   Menu,
   X,
   CloudUpload,
   RefreshCw
 } from 'lucide-react';
+import { DetailedViewIcon, CompactVerticalIcon, CompactHorizontalIcon } from './ViewIcons';
 import { ViewType, FamilyTreeData, Person } from '../types/family';
 import { SaveStatus } from '../utils/storage';
 
@@ -147,11 +145,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   type="button"
                   onClick={onSyncToServer}
-                  className="text-amber-800 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 flex items-center gap-1 shrink-0 cursor-pointer text-[10px] font-medium"
-                  title="שמור במכשיר זה בלבד. לחץ לסנכרון מיידי לשרת הנתונים"
+                  className="text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded border border-amber-400 shadow-sm flex items-center gap-1 shrink-0 cursor-pointer text-[11px] font-semibold animate-pulse"
+                  title="שינויים אחרונים שמורים במכשיר זה בלבד. לחץ לסנכרון מיידי לשרת הנתונים"
                 >
-                  <CloudUpload className="w-3 h-3 text-amber-600" />
-                  <span>שמור מקומית (סנכרן לשרת)</span>
+                  <CloudUpload className="w-3.5 h-3.5 text-amber-700 animate-bounce" />
+                  <span>שמור מקומית בלבד (סנכרן לשרת)</span>
                 </button>
               )}
             </div>
@@ -167,10 +165,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-white text-stone-900 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
-            title="תצוגה מפורטת עם תמונות ותאריכים, דורות מלמעלה למטה"
+            title="מצב תצוגה מורחב - תמונות ותאריכים מלאים"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>תצוגה מפורטת</span>
+            <DetailedViewIcon className="w-3.5 h-3.5" />
+            <span>תצוגה מורחבת</span>
           </button>
 
           <button
@@ -180,9 +178,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-white text-stone-900 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
-            title="שמות בלבד, דורות מלמעלה למטה"
+            title="מקוצרת לאורך - שמות בלבד, דורות מלמעלה למטה"
           >
-            <GitBranch className="w-3.5 h-3.5" />
+            <CompactVerticalIcon className="w-3.5 h-3.5" />
             <span>מקוצרת לאורך</span>
           </button>
 
@@ -193,10 +191,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? 'bg-white text-stone-900 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
-            title="שמות בלבד, דורות מימין לשמאל"
+            title="מקוצרת לרוחב - שמות בלבד, דורות מימין לשמאל (RTL)"
           >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>מקוצרת לרוחב (RTL)</span>
+            <CompactHorizontalIcon className="w-3.5 h-3.5" />
+            <span>מקוצרת לרוחב</span>
           </button>
         </div>
 
@@ -502,8 +500,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
-                  <Layers className="w-4 h-4" />
-                  <span>תצוגה מפורטת (עם תמונות)</span>
+                  <DetailedViewIcon className="w-4 h-4" />
+                  <span>תצוגה מורחבת (עם תמונות)</span>
                 </button>
                 <button
                   onClick={() => {
@@ -516,7 +514,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
-                  <GitBranch className="w-4 h-4" />
+                  <CompactVerticalIcon className="w-4 h-4" />
                   <span>מקוצרת לאורך (שמות בלבד)</span>
                 </button>
                 <button
@@ -530,7 +528,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
-                  <LayoutGrid className="w-4 h-4" />
+                  <CompactHorizontalIcon className="w-4 h-4" />
                   <span>מקוצרת לרוחב (RTL)</span>
                 </button>
               </div>
