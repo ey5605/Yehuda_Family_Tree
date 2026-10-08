@@ -1213,7 +1213,7 @@ function computeHorizontalRTLTreeLayout(
     // Dedicated cosmetic offset: space Yihye & Chamam further down from Salem & Tzadaka
     let yihyeExtraGapH = 0;
     if (tree.person.id === 'p0018') {
-      yihyeExtraGapH = 268;
+      yihyeExtraGapH = 670;
       adultsStartY += yihyeExtraGapH;
     }
 

@@ -7,7 +7,7 @@ import { ImportModal } from './components/ImportModal';
 import { ExportModal } from './components/ExportModal';
 import { AcceptanceTestModal } from './components/AcceptanceTestModal';
 import { UnlockModal } from './components/UnlockModal';
-import { FamilyTreeData, ViewType, Person, Relationship } from './types/family';
+import { FamilyTreeData, ViewType, Person, Relationship, BgThemeId, BG_THEMES } from './types/family';
 import { computeTreeLayout } from './utils/treeLayout';
 import {
   loadFamilyTree,
@@ -43,6 +43,30 @@ export default function App() {
   const [isReadOnly, setIsReadOnly] = useState<boolean>(true);
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState<boolean>(false);
   const [fitTrigger, setFitTrigger] = useState(1);
+
+  // Background Theme Palette State (default + 3 graded dark colors, persisted across views & sessions)
+  const [bgTheme, setBgTheme] = useState<BgThemeId>(() => {
+    try {
+      const saved = localStorage.getItem('family_tree_bg_theme');
+      if (saved && (saved === 'default' || saved === 'dark-gray' || saved === 'darker-gray' || saved === 'black')) {
+        return saved as BgThemeId;
+      }
+    } catch {
+      // ignore
+    }
+    return 'default';
+  });
+
+  const handleBgThemeChange = useCallback((newTheme: BgThemeId) => {
+    setBgTheme(newTheme);
+    try {
+      localStorage.setItem('family_tree_bg_theme', newTheme);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const activeThemeConfig = BG_THEMES[bgTheme] || BG_THEMES['default'];
 
   // Undo / Redo History Stacks
   const [history, setHistory] = useState<FamilyTreeData[]>([]);
@@ -589,7 +613,10 @@ export default function App() {
   };
 
   return (
-    <div className="fixed inset-0 w-full h-[100dvh] flex flex-col overflow-hidden bg-stone-50 select-none">
+    <div
+      className="fixed inset-0 w-full h-[100dvh] flex flex-col overflow-hidden select-none transition-colors duration-200"
+      style={{ backgroundColor: activeThemeConfig.appBg }}
+    >
       {/* Top Bar Navigation */}
       <Navbar
         treeData={treeData}
@@ -676,12 +703,17 @@ export default function App() {
       )}
 
       {/* Main Interactive Tree Area */}
-      <main className="flex-1 relative overflow-hidden">
+      <main
+        className="flex-1 relative overflow-hidden transition-colors duration-200"
+        style={{ backgroundColor: activeThemeConfig.canvasBg }}
+      >
         <TreeCanvas
           layout={layout}
           viewType={viewType}
           selectedPersonId={selectedPersonId}
           fitTrigger={fitTrigger}
+          bgTheme={bgTheme}
+          onBgThemeChange={handleBgThemeChange}
           onSelectPerson={id => {
             setSelectedPersonId(id);
             setIsPersonModalOpen(true);

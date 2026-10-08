@@ -10,10 +10,12 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Palette,
+  Check
 } from 'lucide-react';
 import { DetailedViewIcon, CompactVerticalIcon, CompactHorizontalIcon } from './ViewIcons';
-import { TreeLayout, LayoutNode, LayoutConnector, ViewType, FamilyTreeData } from '../types/family';
+import { TreeLayout, LayoutNode, LayoutConnector, ViewType, FamilyTreeData, BgThemeId, BG_THEMES } from '../types/family';
 import { formatDisplayDate } from '../utils/familyGraph';
 
 interface TreeCanvasProps {
@@ -21,6 +23,8 @@ interface TreeCanvasProps {
   viewType: ViewType;
   selectedPersonId: string | null;
   fitTrigger?: number;
+  bgTheme?: BgThemeId;
+  onBgThemeChange?: (theme: BgThemeId) => void;
   onSelectPerson: (personId: string) => void;
   onQuickAddChild: (parentId: string) => void;
   onQuickAddSpouse: (personId: string) => void;
@@ -40,6 +44,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   viewType,
   selectedPersonId,
   fitTrigger,
+  bgTheme = 'default',
+  onBgThemeChange,
   onSelectPerson,
   onQuickAddChild,
   onQuickAddSpouse,
@@ -54,10 +60,37 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   canvasRefCallback,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const paletteContainerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isSmoothTransition, setIsSmoothTransition] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+
+  const activeThemeConfig = BG_THEMES[bgTheme] || BG_THEMES['default'];
+
+  // Close color palette on click outside or escape
+  useEffect(() => {
+    if (!isPaletteOpen) return;
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (paletteContainerRef.current && !paletteContainerRef.current.contains(e.target as Node)) {
+        setIsPaletteOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsPaletteOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPaletteOpen]);
 
   // Synchronous refs to prevent stale closure bugs in high-frequency events (wheel, touch, pan)
   const scaleRef = useRef(1);
@@ -519,18 +552,22 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`relative w-full h-full bg-stone-100 overflow-hidden select-none touch-none cursor-${
+      className={`relative w-full h-full overflow-hidden select-none touch-none transition-colors duration-200 cursor-${
         isDragging ? 'grabbing' : 'grab'
       }`}
-      style={{ touchAction: 'none' }}
+      style={{
+        backgroundColor: activeThemeConfig.canvasBg,
+        touchAction: 'none',
+      }}
     >
       {/* Background subtle grid pattern */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-40"
+        className="absolute inset-0 pointer-events-none transition-opacity duration-200"
         style={{
-          backgroundImage: `radial-gradient(#a8a29e 1px, transparent 1px)`,
+          backgroundImage: `radial-gradient(${activeThemeConfig.dotColor} 1px, transparent 1px)`,
           backgroundSize: `${30 * scale}px ${30 * scale}px`,
           backgroundPosition: `${position.x}px ${position.y}px`,
+          opacity: activeThemeConfig.dotOpacity,
         }}
       />
 
@@ -613,7 +650,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                 <path
                   d={conn.path}
                   fill="none"
-                  stroke={isCrossBranch ? '#d97706' : '#78716c'}
+                  stroke={isCrossBranch ? '#d97706' : activeThemeConfig.connectorStroke}
                   strokeWidth={isCrossBranch ? 2 : 1.75}
                   strokeDasharray={isCrossBranch ? '5,5' : undefined}
                   strokeLinecap="round"
@@ -911,10 +948,84 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             onClick={() => fitToScreen(true)}
             title="מרכז והתאם למסך"
             aria-label="מרכז והתאם למסך"
-            className="p-1.5 text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors"
+            className="p-1.5 text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
+
+          <div className="w-[1px] h-4 bg-stone-200 mx-0.5" />
+
+          {/* Background Color Palette Square Button & Popover */}
+          <div ref={paletteContainerRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setIsPaletteOpen(prev => !prev)}
+              title="צבע רקע"
+              aria-label="צבע רקע"
+              className={`w-7 h-7 p-1.5 rounded-lg transition-colors flex items-center justify-center relative cursor-pointer ${
+                isPaletteOpen
+                  ? 'bg-stone-900 text-white shadow-xs'
+                  : 'text-stone-700 hover:text-stone-900 hover:bg-stone-100'
+              }`}
+            >
+              <Palette className="w-4 h-4" />
+              <span
+                className="absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white shadow-xs"
+                style={{ backgroundColor: activeThemeConfig.canvasBg }}
+              />
+            </button>
+
+            {/* Color Palette Popover positioned ABOVE the toolbar */}
+            {isPaletteOpen && (
+              <div
+                dir="rtl"
+                className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-2xl shadow-xl p-2.5 z-40 flex flex-col gap-2 w-[190px] select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
+              >
+                <div className="flex items-center justify-center text-xs font-semibold text-stone-700 border-b border-stone-100 pb-1.5 px-0.5">
+                  <span className="flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-stone-500" />
+                    <span>צבע רקע</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+                  {Object.values(BG_THEMES).map(t => {
+                    const isSelected = (bgTheme || 'default') === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          onBgThemeChange?.(t.id);
+                        }}
+                        aria-label="צבע רקע"
+                        className={`group flex items-center justify-center p-1 rounded-xl transition-all cursor-pointer ${
+                          isSelected
+                            ? 'ring-2 ring-amber-500 ring-offset-2 scale-105 bg-amber-50/50'
+                            : 'hover:bg-stone-100/80 hover:scale-102'
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg border-2 shadow-xs flex items-center justify-center transition-transform ${
+                            t.isDark ? 'border-stone-600' : 'border-stone-300'
+                          }`}
+                          style={{ backgroundColor: t.canvasBg }}
+                        >
+                          {isSelected && (
+                            <Check
+                              className={`w-4 h-4 stroke-[3] ${
+                                t.isDark ? 'text-amber-400' : 'text-amber-600'
+                              }`}
+                            />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

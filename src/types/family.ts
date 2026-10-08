@@ -91,3 +91,64 @@ export interface DateValidationResult {
   isValid: boolean;
   warning?: string;
 }
+
+export type BgThemeId = 'default' | 'dark-gray' | 'darker-gray' | 'black';
+
+export interface BgThemeOption {
+  id: BgThemeId;
+  name: string;
+  shortLabel: string;
+  canvasBg: string;
+  appBg: string;
+  dotColor: string;
+  dotOpacity: number;
+  connectorStroke: string;
+  isDark: boolean;
+}
+
+export const BG_THEMES: Record<BgThemeId, BgThemeOption> = {
+  'default': {
+    id: 'default',
+    name: 'ברירת מחדל (מקורי)',
+    shortLabel: 'בהיר',
+    canvasBg: '#f5f5f4',
+    appBg: '#fafaf9',
+    dotColor: '#a8a29e',
+    dotOpacity: 0.35,
+    connectorStroke: '#78716c',
+    isDark: false,
+  },
+  'dark-gray': {
+    id: 'dark-gray',
+    name: 'אפור בהיר (#cbd5e1)',
+    shortLabel: 'אפור בהיר',
+    canvasBg: '#cbd5e1',
+    appBg: '#cbd5e1',
+    dotColor: '#64748b',
+    dotOpacity: 0.3,
+    connectorStroke: '#475569',
+    isDark: false,
+  },
+  'darker-gray': {
+    id: 'darker-gray',
+    name: 'אפור כהה (#71717a)',
+    shortLabel: 'אפור כהה',
+    canvasBg: '#71717a',
+    appBg: '#71717a',
+    dotColor: '#e4e4e7',
+    dotOpacity: 0.32,
+    connectorStroke: '#f4f4f5',
+    isDark: true,
+  },
+  'black': {
+    id: 'black',
+    name: 'שחור',
+    shortLabel: 'שחור',
+    canvasBg: '#000000',
+    appBg: '#000000',
+    dotColor: '#3f3f46',
+    dotOpacity: 0.32,
+    connectorStroke: '#e2e8f0',
+    isDark: true,
+  },
+};
