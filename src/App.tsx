@@ -535,13 +535,13 @@ export default function App() {
   };
 
   // Branch Collapsing & Expanding
-  const handleToggleCollapse = (personId: string) => {
+  const handleToggleCollapse = (collapseKey: string) => {
     setCollapsedNodeIds(prev => {
       const next = new Set(prev);
-      if (next.has(personId)) {
-        next.delete(personId);
+      if (next.has(collapseKey)) {
+        next.delete(collapseKey);
       } else {
-        next.add(personId);
+        next.add(collapseKey);
       }
       return next;
     });

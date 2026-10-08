@@ -133,6 +133,7 @@ interface UnionGroup {
   childrenSubtrees: FamilySubtree[];
   linkedChildren?: Person[]; // children already placed as a spouse in another branch
   width: number;
+  isCollapsed?: boolean;
 }
 
 interface FamilySubtree {
@@ -165,7 +166,86 @@ export function findDescendantInSet(
   return null;
 }
 
-// Helper: Collect all person IDs that should be hidden because an ancestor is collapsed
+// Helper: Find other parent/coparent of a child with respect to a primary parent
+export function getChildOtherParent(
+  data: FamilyTreeData,
+  primaryId: string,
+  childId: string
+): string | null {
+  const parents = getParents(data, childId);
+  const other = parents.find(p => p.person.id !== primaryId);
+  if (other) return other.person.id;
+
+  // Check coparentId in relationship
+  for (const rel of data.relationships) {
+    if (
+      rel.type === 'parent-child' &&
+      rel.person1Id === primaryId &&
+      rel.person2Id === childId &&
+      rel.coparentId
+    ) {
+      return rel.coparentId;
+    }
+  }
+  return null;
+}
+
+// Helper: Canonical collapse key for a couple or solo parent branch
+export function getUnionCollapseKey(primaryId: string, spouseId: string | null | undefined): string {
+  if (!spouseId || spouseId === 'solo') {
+    return `${primaryId}::solo`;
+  }
+  return primaryId < spouseId ? `${primaryId}::${spouseId}` : `${spouseId}::${primaryId}`;
+}
+
+// Helper: Check if a specific union branch is collapsed
+export function isUnionCollapsed(
+  primaryId: string,
+  spouseId: string | null | undefined,
+  collapsedNodeIds: Set<string>
+): boolean {
+  if (!collapsedNodeIds || collapsedNodeIds.size === 0) return false;
+  const key = getUnionCollapseKey(primaryId, spouseId);
+  if (collapsedNodeIds.has(key)) return true;
+  // Backwards compatibility: if person is collapsed globally
+  if (collapsedNodeIds.has(primaryId)) return true;
+  if (spouseId && spouseId !== 'solo' && collapsedNodeIds.has(spouseId)) return true;
+  return false;
+}
+
+// Helper: Count descendants belonging to a specific union
+export function countUnionDescendants(
+  data: FamilyTreeData,
+  primaryId: string,
+  spouseId: string | null | undefined
+): number {
+  const children = getChildren(data, primaryId);
+  const unionChildren = children.filter(c => {
+    const other = getChildOtherParent(data, primaryId, c.person.id);
+    if (spouseId && spouseId !== 'solo') {
+      return other === spouseId;
+    }
+    return !other;
+  });
+
+  const visited = new Set<string>();
+  function countRecursive(personId: string) {
+    if (visited.has(personId)) return;
+    visited.add(personId);
+    const childList = getChildren(data, personId);
+    for (const { person: child } of childList) {
+      countRecursive(child.id);
+    }
+  }
+
+  for (const { person: child } of unionChildren) {
+    countRecursive(child.id);
+  }
+
+  return visited.size > 0 ? visited.size : countDescendants(data, primaryId);
+}
+
+// Helper: Collect all person IDs that should be hidden because an ancestor or union is collapsed
 export function getHiddenPersonIds(
   data: FamilyTreeData,
   collapsedNodeIds: Set<string>
@@ -173,30 +253,60 @@ export function getHiddenPersonIds(
   const hidden = new Set<string>();
   if (!collapsedNodeIds || collapsedNodeIds.size === 0) return hidden;
 
-  function hideDescendants(parentId: string) {
-    const children = getChildren(data, parentId);
-    for (const { person: child } of children) {
-      if (!hidden.has(child.id)) {
-        hidden.add(child.id);
+  function hideBranchDescendants(id: string) {
+    if (hidden.has(id)) return;
+    hidden.add(id);
 
-        // Hide spouses of this child if they don't have other visible parents outside this collapsed branch
-        const spouses = getSpouses(data, child.id);
-        for (const s of spouses) {
-          const sParents = getParents(data, s.person.id);
-          const hasVisibleParent = sParents.some(p => !hidden.has(p.person.id));
-          if (!hasVisibleParent) {
-            hidden.add(s.person.id);
-          }
-        }
-
-        // Recursively hide lower generations down this branch
-        hideDescendants(child.id);
+    // Spouses of this person: hide spouse if they don't have separate visible parents
+    const spouses = getSpouses(data, id);
+    for (const s of spouses) {
+      const sParents = getParents(data, s.person.id);
+      const hasVisibleParents = sParents.length > 0 && sParents.some(p => !hidden.has(p.person.id));
+      if (!hasVisibleParents) {
+        hidden.add(s.person.id);
       }
+    }
+
+    // Children of this person
+    const children = getChildren(data, id);
+    for (const { person: child } of children) {
+      hideBranchDescendants(child.id);
     }
   }
 
-  for (const collapsedId of collapsedNodeIds) {
-    hideDescendants(collapsedId);
+  for (const key of collapsedNodeIds) {
+    if (key.includes('::')) {
+      const [id1, id2] = key.split('::');
+      if (id2 === 'solo') {
+        const children = getChildren(data, id1);
+        for (const { person: child } of children) {
+          const other = getChildOtherParent(data, id1, child.id);
+          if (!other) {
+            hideBranchDescendants(child.id);
+          }
+        }
+      } else {
+        const children = getChildren(data, id1);
+        for (const { person: child } of children) {
+          const other = getChildOtherParent(data, id1, child.id);
+          if (other === id2) {
+            hideBranchDescendants(child.id);
+          }
+        }
+        const children2 = getChildren(data, id2);
+        for (const { person: child } of children2) {
+          const other = getChildOtherParent(data, id2, child.id);
+          if (other === id1) {
+            hideBranchDescendants(child.id);
+          }
+        }
+      }
+    } else {
+      const children = getChildren(data, key);
+      for (const { person: child } of children) {
+        hideBranchDescendants(child.id);
+      }
+    }
   }
 
   return hidden;
@@ -283,7 +393,7 @@ function computeVerticalTreeLayout(
     const allSpouseEntries = getSpouses(data, person.id);
     const allSpouses: Person[] = [];
     for (const s of allSpouseEntries) {
-      if (!visitedInBuild.has(s.person.id)) {
+      if (!visitedInBuild.has(s.person.id) && !hiddenPersons.has(s.person.id)) {
         visitedInBuild.add(s.person.id);
         allSpouses.push(s.person);
       }
@@ -302,37 +412,54 @@ function computeVerticalTreeLayout(
     unionMap.set(null, []); // for single-parent / unspecified children
     linkedMap.set(null, []);
 
-    if (!isCollapsed) {
-      for (const { person: child } of allChildrenEntries) {
-        const otherParentId = getOtherParentForChild(person.id, child.id);
-        const targetKey = otherParentId && unionMap.has(otherParentId) ? otherParentId : null;
+    for (const { person: child } of allChildrenEntries) {
+      if (hiddenPersons.has(child.id)) {
+        continue;
+      }
+      const otherParentId = getChildOtherParent(data, person.id, child.id);
+      const targetKey = otherParentId && unionMap.has(otherParentId) ? otherParentId : null;
 
-        if (!visitedInBuild.has(child.id)) {
-          const childSubtree = buildFamilySubtree(child);
-          const list = unionMap.get(targetKey) || [];
-          list.push(childSubtree);
-          unionMap.set(targetKey, list);
-        } else if (placedPersons.has(child.id)) {
-          // Child was already placed (e.g. as a spouse in another branch)
-          const list = linkedMap.get(targetKey) || [];
-          list.push(child);
-          linkedMap.set(targetKey, list);
-        }
+      // Check if this specific union is collapsed
+      const unionCollapsed = isUnionCollapsed(person.id, targetKey, collapsedNodeIds);
+      if (unionCollapsed) {
+        continue;
+      }
+
+      if (!visitedInBuild.has(child.id)) {
+        const childSubtree = buildFamilySubtree(child);
+        const list = unionMap.get(targetKey) || [];
+        list.push(childSubtree);
+        unionMap.set(targetKey, list);
+      } else {
+        // Child was already visited in build (e.g. as a spouse in another branch) or placed elsewhere
+        const list = linkedMap.get(targetKey) || [];
+        list.push(child);
+        linkedMap.set(targetKey, list);
       }
     }
 
-    // Sort spouses cleanly:
+    // Helper to get total children count for a spouse from raw data (stable across expand/collapse)
+    const getRawSpouseChildrenCount = (spouseId: string) => {
+      return allChildrenEntries.filter(
+        c => getChildOtherParent(data, person.id, c.person.id) === spouseId
+      ).length;
+    };
+
+    // Sort spouses stably:
     // If multiple spouses, place previous marriage / spouse with children on the right (higher X, RTL first),
     // and current partner on the left, with the primary person in the center!
     const sortedSpouses = [...allSpouses].sort((a, b) => {
-      const aCount = (unionMap.get(a.id) || []).length + (linkedMap.get(a.id) || []).length;
-      const bCount = (unionMap.get(b.id) || []).length + (linkedMap.get(b.id) || []).length;
+      const aCount = getRawSpouseChildrenCount(a.id);
+      const bCount = getRawSpouseChildrenCount(b.id);
       if (aCount !== bCount) {
-        return aCount - bCount; // spouse with 0 children to left (sp0), spouse with children to right (sp1)
+        return aCount - bCount; // spouse with fewer children to left (sp0), spouse with more children to right (sp1)
       }
       const bA = a.birthDate || '9999';
       const bB = b.birthDate || '9999';
-      return bB.localeCompare(bA);
+      if (bA !== bB) {
+        return bB.localeCompare(bA);
+      }
+      return a.id.localeCompare(b.id);
     });
 
     const orderedSpouses: Person[] = sortedSpouses;
@@ -343,24 +470,32 @@ function computeVerticalTreeLayout(
       const childSubs = unionMap.get(sp.id) || [];
       const linkedSubs = linkedMap.get(sp.id) || [];
       const uWidth = computeChildrenWidth(childSubs);
+      const isCol = isUnionCollapsed(person.id, sp.id, collapsedNodeIds);
       unions.push({
         spouse: sp,
         childrenSubtrees: childSubs,
         linkedChildren: linkedSubs,
         width: uWidth,
+        isCollapsed: isCol,
       });
     }
 
     // Solo children
     const soloChildren = unionMap.get(null) || [];
     const soloLinked = linkedMap.get(null) || [];
-    if (soloChildren.length > 0 || soloLinked.length > 0) {
+    const hasSoloChildrenInData = allChildrenEntries.some(
+      c => !getChildOtherParent(data, person.id, c.person.id) ||
+           !allSpouses.some(s => s.id === getChildOtherParent(data, person.id, c.person.id))
+    );
+    if (soloChildren.length > 0 || soloLinked.length > 0 || hasSoloChildrenInData) {
       const soloWidth = computeChildrenWidth(soloChildren);
+      const isCol = isUnionCollapsed(person.id, null, collapsedNodeIds);
       unions.push({
         spouse: null,
         childrenSubtrees: soloChildren,
         linkedChildren: soloLinked,
-        width: soloWidth,
+        width: Math.max(dims.nodeWidth, soloWidth),
+        isCollapsed: isCol,
       });
     }
 
@@ -404,7 +539,13 @@ function computeVerticalTreeLayout(
     // All spouses are strictly adjacent to the primary person!
     const totalAdults = 1 + tree.orderedSpouses.length;
     const adultsRowWidth = totalAdults * dims.nodeWidth + (totalAdults - 1) * dims.spouseGap;
-    const adultsStartX = leftX + (tree.width - adultsRowWidth) / 2;
+    let adultsStartX = leftX + (tree.width - adultsRowWidth) / 2;
+
+    // Dedicated cosmetic offset: space Yihye & Chamam further right from Salem & Tzadaka
+    if (tree.primaryPerson.id === 'p0018') {
+      const yihyeExtraGap = viewType === 'detailed-vertical' ? 700 : 450;
+      adultsStartX += yihyeExtraGap;
+    }
 
     const adultPositions = new Map<string, { x: number; y: number }>();
 
@@ -515,8 +656,8 @@ function computeVerticalTreeLayout(
     for (const union of tree.unions) {
       // Check if this union has children (either active subtrees, linked children, or in the data when collapsed)
       const hasChildren = union.spouse
-        ? allChildrenForPerson.some(c => getOtherParentForChild(tree.primaryPerson.id, c.person.id) === union.spouse?.id)
-        : allChildrenForPerson.some(c => !getOtherParentForChild(tree.primaryPerson.id, c.person.id));
+        ? allChildrenForPerson.some(c => getChildOtherParent(data, tree.primaryPerson.id, c.person.id) === union.spouse?.id)
+        : allChildrenForPerson.some(c => !getChildOtherParent(data, tree.primaryPerson.id, c.person.id));
 
       const hasLinked = Boolean(union.linkedChildren && union.linkedChildren.length > 0);
 
@@ -552,7 +693,11 @@ function computeVerticalTreeLayout(
         ? nodeY + Math.round(dims.nodeHeight * 0.88)
         : nodeY + dims.nodeHeight + 12;
 
-      if (tree.isCollapsed) {
+      const unionIsCollapsed = union.isCollapsed ?? isUnionCollapsed(tree.primaryPerson.id, union.spouse?.id, collapsedNodeIds);
+      const collapseKey = getUnionCollapseKey(tree.primaryPerson.id, union.spouse?.id);
+      const descCount = countUnionDescendants(data, tree.primaryPerson.id, union.spouse?.id);
+
+      if (unionIsCollapsed) {
         // When branch is collapsed: draw stub stem from marriage line/parent and place expand button on it!
         const stubEndY = branchBtnY;
         connectors.push({
@@ -568,9 +713,11 @@ function computeVerticalTreeLayout(
         branchButtons.push({
           id: `branch-btn-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.primaryPerson.id,
+          spouseId: union.spouse?.id || null,
+          collapseKey,
           x: unionAnchorX,
           y: branchBtnY,
-          descendantCount: tree.descendantCount ?? countDescendants(data, tree.primaryPerson.id),
+          descendantCount: descCount,
           isCollapsed: true,
         });
       } else if (union.childrenSubtrees.length > 0 || hasLinked) {
@@ -592,18 +739,31 @@ function computeVerticalTreeLayout(
         branchButtons.push({
           id: `branch-btn-${tree.primaryPerson.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.primaryPerson.id,
+          spouseId: union.spouse?.id || null,
+          collapseKey,
           x: unionAnchorX,
           y: branchBtnY,
-          descendantCount: tree.descendantCount ?? countDescendants(data, tree.primaryPerson.id),
+          descendantCount: descCount,
           isCollapsed: false,
         });
 
         // Calculate start X for this union's children centered directly under unionAnchorX
         const uChildrenWidth = computeChildrenWidth(union.childrenSubtrees);
 
-        let uStartChildX = unionAnchorX - uChildrenWidth / 2;
-        if (uStartChildX < leftX) {
-          uStartChildX = leftX;
+        let uStartChildX: number;
+        const isSalemUnion = tree.primaryPerson.id === 'p0002';
+        if (isSalemUnion && union.linkedChildren && union.linkedChildren.length > 0 && union.childrenSubtrees.length > 0) {
+          const coupleRightEdge = adultPositions.size > 0
+            ? Math.max(...Array.from(adultPositions.values()).map(p => p.x + dims.nodeWidth))
+            : unionAnchorX;
+          // Offset Aharon's branch to the right to create clear distinction from Sara Talaba & Yehuda
+          const aharonExtraGap = viewType === 'detailed-vertical' ? 240 : 160;
+          uStartChildX = coupleRightEdge + dims.hGap + aharonExtraGap;
+        } else {
+          uStartChildX = unionAnchorX - uChildrenWidth / 2;
+          if (uStartChildX < leftX) {
+            uStartChildX = leftX;
+          }
         }
 
         let currentChildX = uStartChildX;
@@ -611,13 +771,27 @@ function computeVerticalTreeLayout(
 
         for (let i = 0; i < union.childrenSubtrees.length; i++) {
           const childSub = union.childrenSubtrees[i];
-          placeFamilySubtree(childSub, currentChildX, baseStartY);
+
+          // Check if this child subtree itself has an already-placed linked child (like Salem with Sara Talaba)
+          const linkedDescId = childSub.unions
+            .flatMap(u => u.linkedChildren || [])
+            .map(c => c.id)
+            .find(id => placedPersons.has(id));
+          const linkedDescNode = linkedDescId ? nodes.find(n => n.id === linkedDescId) : null;
+
+          let targetXForChild = currentChildX;
+          if (childSub.primaryPerson.id === 'p0002' && linkedDescNode) {
+            // Place Salem & Tzadaka directly above Sara Talaba!
+            targetXForChild = linkedDescNode.x;
+          }
+
+          placeFamilySubtree(childSub, targetXForChild, baseStartY);
 
           // Connect STRICTLY to the child itself (primaryPerson), never to the child's spouse!
           const childNode = nodes.find(n => n.id === childSub.primaryPerson.id);
           const childCenter = childNode
             ? childNode.x + childNode.width / 2
-            : currentChildX + dims.nodeWidth / 2;
+            : targetXForChild + dims.nodeWidth / 2;
           childMidpoints.push(childCenter);
 
           const childTopY = baseStartY + childSub.generation * (dims.nodeHeight + dims.vGap);
@@ -636,7 +810,13 @@ function computeVerticalTreeLayout(
           const gap = i < union.childrenSubtrees.length - 1
             ? getVerticalSiblingGap(childSub, union.childrenSubtrees[i + 1])
             : 0;
-          currentChildX += childSub.width + gap;
+
+          if (childSub.primaryPerson.id === 'p0002' && linkedDescNode) {
+            const maxPlacedRight = Math.max(...nodes.map(n => n.x + n.width));
+            currentChildX = Math.max(currentChildX, maxPlacedRight + gap);
+          } else {
+            currentChildX += childSub.width + gap;
+          }
         }
 
         // Connect to linked children (e.g. Bracha placed as spouse to Shalom)
@@ -816,6 +996,7 @@ interface HUnionGroup {
   childrenSubtrees: HFamilySubtree[];
   linkedChildren?: Person[];
   height: number;
+  isCollapsed?: boolean;
 }
 
 interface HFamilySubtree {
@@ -896,7 +1077,7 @@ function computeHorizontalRTLTreeLayout(
     const allSpouseEntries = getSpouses(data, person.id);
     const allSpouses: Person[] = [];
     for (const s of allSpouseEntries) {
-      if (!visitedInBuild.has(s.person.id)) {
+      if (!visitedInBuild.has(s.person.id) && !hiddenPersons.has(s.person.id)) {
         visitedInBuild.add(s.person.id);
         allSpouses.push(s.person);
       }
@@ -913,35 +1094,52 @@ function computeHorizontalRTLTreeLayout(
     unionMap.set(null, []);
     linkedMap.set(null, []);
 
-    if (!isCollapsed) {
-      for (const { person: child } of allChildrenEntries) {
-        const otherParentId = getOtherParentForChild(person.id, child.id);
-        const targetKey = otherParentId && unionMap.has(otherParentId) ? otherParentId : null;
+    for (const { person: child } of allChildrenEntries) {
+      if (hiddenPersons.has(child.id)) {
+        continue;
+      }
+      const otherParentId = getChildOtherParent(data, person.id, child.id);
+      const targetKey = otherParentId && unionMap.has(otherParentId) ? otherParentId : null;
 
-        if (!visitedInBuild.has(child.id)) {
-          const childSubtree = buildHSubtree(child);
-          const list = unionMap.get(targetKey) || [];
-          list.push(childSubtree);
-          unionMap.set(targetKey, list);
-        } else if (placedPersons.has(child.id)) {
-          const list = linkedMap.get(targetKey) || [];
-          list.push(child);
-          linkedMap.set(targetKey, list);
-        }
+      // Check if this specific union is collapsed
+      const unionCollapsed = isUnionCollapsed(person.id, targetKey, collapsedNodeIds);
+      if (unionCollapsed) {
+        continue;
+      }
+
+      if (!visitedInBuild.has(child.id)) {
+        const childSubtree = buildHSubtree(child);
+        const list = unionMap.get(targetKey) || [];
+        list.push(childSubtree);
+        unionMap.set(targetKey, list);
+      } else {
+        const list = linkedMap.get(targetKey) || [];
+        list.push(child);
+        linkedMap.set(targetKey, list);
       }
     }
 
-    // Sort spouses cleanly so that previous marriage / spouse with children is placed on bottom (sp1),
+    // Helper to get total children count for a spouse from raw data (stable across expand/collapse)
+    const getRawSpouseChildrenCount = (spouseId: string) => {
+      return allChildrenEntries.filter(
+        c => getChildOtherParent(data, person.id, c.person.id) === spouseId
+      ).length;
+    };
+
+    // Sort spouses stably so that previous marriage / spouse with children is placed on bottom (sp1),
     // and current partner on top (sp0), with primary person in the center!
     const sortedSpouses = [...allSpouses].sort((a, b) => {
-      const aCount = (unionMap.get(a.id) || []).length + (linkedMap.get(a.id) || []).length;
-      const bCount = (unionMap.get(b.id) || []).length + (linkedMap.get(b.id) || []).length;
+      const aCount = getRawSpouseChildrenCount(a.id);
+      const bCount = getRawSpouseChildrenCount(b.id);
       if (aCount !== bCount) {
         return aCount - bCount;
       }
       const bA = a.birthDate || '9999';
       const bB = b.birthDate || '9999';
-      return bB.localeCompare(bA);
+      if (bA !== bB) {
+        return bB.localeCompare(bA);
+      }
+      return a.id.localeCompare(b.id);
     });
 
     const orderedSpouses: Person[] = sortedSpouses;
@@ -951,23 +1149,31 @@ function computeHorizontalRTLTreeLayout(
       const childSubs = unionMap.get(sp.id) || [];
       const linkedSubs = linkedMap.get(sp.id) || [];
       const uHeight = computeChildrenTotalHeight(childSubs);
+      const isCol = isUnionCollapsed(person.id, sp.id, collapsedNodeIds);
       unions.push({
         spouse: sp,
         childrenSubtrees: childSubs,
         linkedChildren: linkedSubs,
         height: uHeight,
+        isCollapsed: isCol,
       });
     }
 
     const soloChildren = unionMap.get(null) || [];
     const soloLinked = linkedMap.get(null) || [];
-    if (soloChildren.length > 0 || soloLinked.length > 0) {
+    const hasSoloChildrenInData = allChildrenEntries.some(
+      c => !getChildOtherParent(data, person.id, c.person.id) ||
+           !allSpouses.some(s => s.id === getChildOtherParent(data, person.id, c.person.id))
+    );
+    if (soloChildren.length > 0 || soloLinked.length > 0 || hasSoloChildrenInData) {
       const soloHeight = computeChildrenTotalHeight(soloChildren);
+      const isCol = isUnionCollapsed(person.id, null, collapsedNodeIds);
       unions.push({
         spouse: null,
         childrenSubtrees: soloChildren,
         linkedChildren: soloLinked,
-        height: soloHeight,
+        height: Math.max(dims.nodeHeight, soloHeight),
+        isCollapsed: isCol,
       });
     }
 
@@ -1002,7 +1208,14 @@ function computeHorizontalRTLTreeLayout(
 
     const totalAdults = 1 + tree.orderedSpouses.length;
     const adultsColumnHeight = totalAdults * dims.nodeHeight + (totalAdults - 1) * dims.spouseGap;
-    const adultsStartY = topY + (tree.height - adultsColumnHeight) / 2;
+    let adultsStartY = topY + (tree.height - adultsColumnHeight) / 2;
+
+    // Dedicated cosmetic offset: space Yihye & Chamam further down from Salem & Tzadaka
+    let yihyeExtraGapH = 0;
+    if (tree.person.id === 'p0018') {
+      yihyeExtraGapH = 268;
+      adultsStartY += yihyeExtraGapH;
+    }
 
     const adultPositions = new Map<string, { x: number; y: number }>();
 
@@ -1220,8 +1433,8 @@ function computeHorizontalRTLTreeLayout(
 
     for (const union of tree.unions) {
       const hasChildren = union.spouse
-        ? allChildrenForPersonH.some(c => getOtherParentForChild(tree.person.id, c.person.id) === union.spouse?.id)
-        : allChildrenForPersonH.some(c => !getOtherParentForChild(tree.person.id, c.person.id));
+        ? allChildrenForPersonH.some(c => getChildOtherParent(data, tree.person.id, c.person.id) === union.spouse?.id)
+        : allChildrenForPersonH.some(c => !getChildOtherParent(data, tree.person.id, c.person.id));
 
       const hasLinked = Boolean(union.linkedChildren && union.linkedChildren.length > 0);
 
@@ -1258,7 +1471,11 @@ function computeHorizontalRTLTreeLayout(
       const branchBtnX = union.spouse ? nodeX + 22 : nodeX - 14;
       const branchBtnY = anchorY;
 
-      if (tree.isCollapsed) {
+      const unionIsCollapsed = union.isCollapsed ?? isUnionCollapsed(tree.person.id, union.spouse?.id, collapsedNodeIds);
+      const collapseKey = getUnionCollapseKey(tree.person.id, union.spouse?.id);
+      const descCount = countUnionDescendants(data, tree.person.id, union.spouse?.id);
+
+      if (unionIsCollapsed) {
         // Line from marriage line between parents to the branch button / left edge of rectangle
         connectors.push({
           id: `h-stem-stub-${tree.person.id}-${union.spouse?.id || 'solo'}`,
@@ -1273,9 +1490,11 @@ function computeHorizontalRTLTreeLayout(
         branchButtons.push({
           id: `h-branch-btn-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.person.id,
+          spouseId: union.spouse?.id || null,
+          collapseKey,
           x: branchBtnX,
           y: branchBtnY,
-          descendantCount: tree.descendantCount ?? countDescendants(data, tree.person.id),
+          descendantCount: descCount,
           isCollapsed: true,
         });
       } else if (union.childrenSubtrees.length > 0 || hasLinked) {
@@ -1297,17 +1516,33 @@ function computeHorizontalRTLTreeLayout(
         branchButtons.push({
           id: `h-branch-btn-${tree.person.id}-${union.spouse?.id || 'solo'}`,
           personId: tree.person.id,
+          spouseId: union.spouse?.id || null,
+          collapseKey,
           x: branchBtnX,
           y: branchBtnY,
-          descendantCount: tree.descendantCount ?? countDescendants(data, tree.person.id),
+          descendantCount: descCount,
           isCollapsed: false,
         });
 
         const uChildrenHeight = computeChildrenTotalHeight(union.childrenSubtrees);
 
-        let uStartChildY = anchorY - uChildrenHeight / 2;
-        if (uStartChildY < topY) {
-          uStartChildY = topY;
+        let uStartChildY: number;
+        const isSalemUnion = tree.person.id === 'p0002';
+        if (isSalemUnion && union.linkedChildren && union.linkedChildren.length > 0 && union.childrenSubtrees.length > 0) {
+          const coupleBottomEdge = adultPositions.size > 0
+            ? Math.max(...Array.from(adultPositions.values()).map(p => p.y + dims.nodeHeight))
+            : anchorY;
+          // Offset Aharon's branch downwards to create clear distinction from Sara Talaba & Yehuda
+          const aharonExtraGapH = 150;
+          uStartChildY = coupleBottomEdge + dims.vGap + aharonExtraGapH;
+        } else {
+          // When placing Yihye's children, use unshifted anchor so Yehuda remains aligned with Sara Talaba & Salem,
+          // while Yihye & Hamam couple is lowered further down independently!
+          const childAnchorY = tree.person.id === 'p0018' ? anchorY - yihyeExtraGapH : anchorY;
+          uStartChildY = childAnchorY - uChildrenHeight / 2;
+          if (uStartChildY < topY) {
+            uStartChildY = topY;
+          }
         }
 
         let currentChildY = uStartChildY;
@@ -1315,13 +1550,26 @@ function computeHorizontalRTLTreeLayout(
 
         for (let i = 0; i < union.childrenSubtrees.length; i++) {
           const childSub = union.childrenSubtrees[i];
-          placeHSubtree(childSub, currentChildY, baseStartX);
+
+          const linkedDescId = childSub.unions
+            .flatMap(u => u.linkedChildren || [])
+            .map(c => c.id)
+            .find(id => placedPersons.has(id));
+          const linkedDescNode = linkedDescId ? nodes.find(n => n.id === linkedDescId) : null;
+
+          let targetYForChild = currentChildY;
+          if (childSub.person.id === 'p0002' && linkedDescNode) {
+            // Align Salem directly with Sara Talaba in horizontal layout
+            targetYForChild = linkedDescNode.y;
+          }
+
+          placeHSubtree(childSub, targetYForChild, baseStartX);
 
           // Connect strictly to the child primary node
           const childNode = nodes.find(n => n.id === childSub.person.id);
           const childCenterY = childNode
             ? childNode.y + childNode.height / 2
-            : currentChildY + dims.nodeHeight / 2;
+            : targetYForChild + dims.nodeHeight / 2;
           childMidpointsY.push(childCenterY);
 
           const childRightEdgeX = baseStartX - childSub.generation * (dims.nodeWidth + dims.hGap) + dims.nodeWidth;
@@ -1337,9 +1585,15 @@ function computeHorizontalRTLTreeLayout(
             toY: childCenterY,
           });
 
-          currentChildY += childSub.height;
-          if (i < union.childrenSubtrees.length - 1) {
-            currentChildY += getSiblingGap(childSub, union.childrenSubtrees[i + 1]);
+          const gap = i < union.childrenSubtrees.length - 1
+            ? getSiblingGap(childSub, union.childrenSubtrees[i + 1])
+            : 0;
+
+          if (childSub.person.id === 'p0002' && linkedDescNode) {
+            const maxPlacedBottom = Math.max(...nodes.map(n => n.y + n.height));
+            currentChildY = Math.max(currentChildY, maxPlacedBottom + gap);
+          } else {
+            currentChildY += childSub.height + gap;
           }
         }
 

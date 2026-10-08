@@ -944,7 +944,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-3 py-2.5 sm:px-4 sm:py-3.5 border-t border-stone-200 bg-stone-50 flex items-center justify-between gap-1.5 sm:gap-2.5 overflow-x-auto whitespace-nowrap select-none">
+        <div className="px-2.5 py-2 sm:px-4 sm:py-3 border-t border-stone-200 bg-stone-50 flex flex-row flex-nowrap items-center justify-between gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar whitespace-nowrap select-none">
           <button
             onClick={onClose}
             disabled={isGenerating}
@@ -953,7 +953,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             סגור
           </button>
 
-          <div className="flex items-center flex-nowrap gap-1.5 sm:gap-2.5 shrink-0">
+          <div className="flex flex-row items-center flex-nowrap gap-1.5 sm:gap-2.5 shrink-0">
             {exportType === 'json' && (
               <>
                 <button

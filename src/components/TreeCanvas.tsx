@@ -790,7 +790,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                 oldX: clickedNode ? clickedNode.x : btn.x,
                 oldY: clickedNode ? clickedNode.y : btn.y,
               };
-              onToggleCollapse(btn.personId);
+              onToggleCollapse(btn.collapseKey || btn.personId);
             }}
             title={btn.isCollapsed ? `הצג ${btn.descendantCount} צאצאים` : 'הסתר את כל הדורות מתחת'}
             style={{

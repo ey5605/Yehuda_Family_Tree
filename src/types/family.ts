@@ -65,6 +65,8 @@ export interface LayoutConnector {
 export interface BranchCollapseButton {
   id: string;
   personId: string;
+  collapseKey?: string;
+  spouseId?: string | null;
   x: number;
   y: number;
   descendantCount: number;
