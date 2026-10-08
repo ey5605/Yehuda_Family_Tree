@@ -979,7 +979,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             {isPaletteOpen && (
               <div
                 dir="rtl"
-                className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-2xl shadow-xl p-2.5 z-40 flex flex-col gap-2 w-[190px] select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
+                className="absolute bottom-full mb-2.5 left-0 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-2xl shadow-xl p-2.5 z-40 flex flex-col gap-2 w-[190px] select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
               >
                 <div className="flex items-center justify-center text-xs font-semibold text-stone-700 border-b border-stone-100 pb-1.5 px-0.5">
                   <span className="flex items-center gap-1.5">
