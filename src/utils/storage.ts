@@ -18,7 +18,7 @@ export const EMPTY_TREE: FamilyTreeData = {
 
 export const INITIAL_TREE: FamilyTreeData = INITIAL_FAMILY_TREE;
 
-// Merge two trees without losing photos, persons, genders, or relationships
+// Merge two trees without losing valid edits, persons, or relationships
 export function mergeFamilyTrees(base: FamilyTreeData, incoming: FamilyTreeData): FamilyTreeData {
   const mergedPersons: Record<string, Person> = { ...(base.persons || {}) };
 
@@ -34,17 +34,22 @@ export function mergeFamilyTrees(base: FamilyTreeData, incoming: FamilyTreeData)
       const primary = incomingIsNewer ? incPerson : basePerson;
       const secondary = incomingIsNewer ? basePerson : incPerson;
 
-      mergedPersons[id] = {
+      const mergedPerson: Person = {
         ...secondary,
         ...primary,
-        // Always preserve photoUrl if either has it
-        photoUrl: primary.photoUrl || secondary.photoUrl,
-        // Always preserve gender: primary takes precedence if set, otherwise fallback to secondary
+        // The newer tree (primary) is authoritative: if photoUrl was removed in primary, do NOT restore from secondary!
+        photoUrl: primary.photoUrl || undefined,
         gender: primary.gender !== undefined ? primary.gender : secondary.gender,
-        birthDate: primary.birthDate || secondary.birthDate,
-        deathDate: primary.deathDate || secondary.deathDate,
-        notes: primary.notes || secondary.notes,
+        birthDate: primary.birthDate !== undefined ? primary.birthDate : secondary.birthDate,
+        deathDate: primary.deathDate !== undefined ? primary.deathDate : secondary.deathDate,
+        notes: primary.notes !== undefined ? primary.notes : secondary.notes,
       };
+
+      if (!mergedPerson.photoUrl) {
+        delete mergedPerson.photoUrl;
+      }
+
+      mergedPersons[id] = mergedPerson;
     }
   }
 
@@ -60,7 +65,9 @@ export function mergeFamilyTrees(base: FamilyTreeData, incoming: FamilyTreeData)
     persons: mergedPersons,
     relationships: Array.from(relMap.values()),
     metadata: {
-      title: base.metadata?.title || incoming.metadata?.title || 'אילן היוחסין של משפחת יהודה',
+      title: incomingIsNewer
+        ? (incoming.metadata?.title || base.metadata?.title || 'אילן היוחסין של משפחת יהודה')
+        : (base.metadata?.title || incoming.metadata?.title || 'אילן היוחסין של משפחת יהודה'),
       lastUpdated: new Date(Math.max(baseTime, incTime, Date.now())).toISOString(),
     },
   };
@@ -120,40 +127,30 @@ export async function loadFamilyTree(): Promise<FamilyTreeData> {
       return serverData;
     }
 
-    // Both server and local have data:
-    // ALWAYS intelligently merge so no local edits (genders, photos, notes, dates) are ever lost!
-    const merged = mergeFamilyTrees(serverData, localData);
-
-    const localHasExtraPhotos = Object.values(localData.persons || {}).some(
-      lp => lp.photoUrl && !serverData!.persons[lp.id]?.photoUrl
-    );
-    const localHasExtraGenders = Object.values(localData.persons || {}).some(
-      lp => lp.gender && !serverData!.persons[lp.id]?.gender
-    );
     const serverTime = serverData.metadata?.lastUpdated ? new Date(serverData.metadata.lastUpdated).getTime() : 0;
     const localTime = localData.metadata?.lastUpdated ? new Date(localData.metadata.lastUpdated).getTime() : 0;
 
-    if (localHasExtraPhotos || localHasExtraGenders || localTime > serverTime) {
-      // Local has modifications not yet committed to server! Sync up immediately!
-      saveFamilyTree(merged).then(ok => {
-        if (!ok) {
-          try {
-            localStorage.setItem('has_unsynced_changes', 'true');
-          } catch {}
-        }
-      });
+    // Only if local has explicit uncommitted changes AND local is strictly newer do we merge local onto server
+    if (hasUnsyncedChanges() && localTime > serverTime) {
+      const merged = mergeFamilyTrees(serverData, localData);
+      saveFamilyTree(merged);
+      try {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      } catch (e) {
+        console.warn('Could not update localStorage with merged data:', e);
+      }
+      return merged;
     } else {
       try {
         localStorage.removeItem('has_unsynced_changes');
-      } catch {}
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
+      } catch (e) {
+        console.warn('Could not update localStorage with server data:', e);
+      }
+      return serverData;
     }
-
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-    } catch (e) {
-      console.warn('Could not update localStorage with merged data:', e);
-    }
-    return merged;
   }
 
   // Case 2: Server not reachable (offline device) but local has data
@@ -190,18 +187,25 @@ export function hasUnsyncedChanges(): boolean {
   }
 }
 
+export interface SaveResult {
+  success: boolean;
+  timestamp: string;
+}
+
 // Save tree both to server and to localStorage with optional keepalive resilience
-export async function saveFamilyTree(data: FamilyTreeData, options?: { keepalive?: boolean }): Promise<boolean> {
-  const updatedData = {
+export async function saveFamilyTree(data: FamilyTreeData, options?: { keepalive?: boolean }): Promise<SaveResult> {
+  const timestamp = data.metadata?.lastUpdated || new Date().toISOString();
+  const updatedData: FamilyTreeData = {
     ...data,
     metadata: {
       ...data.metadata,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: timestamp,
     },
   };
 
   // Always save to localStorage immediately for resilience
   try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
   } catch (err) {
     console.warn('LocalStorage save issue (possibly quota exceeded with images):', err);
@@ -245,19 +249,22 @@ export async function saveFamilyTree(data: FamilyTreeData, options?: { keepalive
       try {
         localStorage.setItem('has_unsynced_changes', 'true');
       } catch {}
-      return false;
+      return { success: false, timestamp };
     }
+
+    const resJson = await res.json().catch(() => null);
+    const finalTimestamp = resJson?.timestamp || timestamp;
 
     try {
       localStorage.removeItem('has_unsynced_changes');
     } catch {}
-    return true;
+    return { success: true, timestamp: finalTimestamp };
   } catch (err) {
     console.warn('Server save failed, saved locally:', err);
     try {
       localStorage.setItem('has_unsynced_changes', 'true');
     } catch {}
-    return false;
+    return { success: false, timestamp };
   }
 }
 
@@ -302,25 +309,29 @@ export async function fetchServerTree(): Promise<FamilyTreeData | null> {
           const localStr = localStorage.getItem(STORAGE_KEY);
           if (localStr) {
             const local = JSON.parse(localStr);
-            const localHasExtraGenders = Object.values(local.persons || {}).some(
-              (lp: any) => lp.gender && !data.persons[lp.id]?.gender
-            );
-            const localHasExtraPhotos = Object.values(local.persons || {}).some(
-              (lp: any) => lp.photoUrl && !data.persons[lp.id]?.photoUrl
-            );
             const localTime = local?.metadata?.lastUpdated ? new Date(local.metadata.lastUpdated).getTime() : 0;
             const dataTime = data.metadata?.lastUpdated ? new Date(data.metadata.lastUpdated).getTime() : 0;
 
-            if (localHasExtraGenders || localHasExtraPhotos || localTime > dataTime) {
+            // Only if local has explicit uncommitted offline changes AND local is newer do we push local onto server
+            if (hasUnsyncedChanges() && localTime > dataTime) {
               const merged = mergeFamilyTrees(data, local);
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-              if (localHasExtraGenders || localHasExtraPhotos) {
-                saveFamilyTree(merged);
+              try {
+                localStorage.removeItem(LEGACY_STORAGE_KEY);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              } catch (e) {
+                console.warn('LocalStorage save issue in fetchServerTree:', e);
               }
+              saveFamilyTree(merged);
               return merged;
             }
           }
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          // Server is newer or equal: keep local cache synchronized with server
+          try {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          } catch (e) {
+            console.warn('Error verifying local storage in fetchServerTree:', e);
+          }
         } catch (e) {
           console.warn('Error verifying local storage in fetchServerTree:', e);
         }
@@ -335,7 +346,8 @@ export async function fetchServerTree(): Promise<FamilyTreeData | null> {
 
 // Force push local tree to server
 export async function pushLocalTreeToServer(data: FamilyTreeData): Promise<boolean> {
-  return await saveFamilyTree(data);
+  const res = await saveFamilyTree(data);
+  return res.success;
 }
 
 // Pull latest tree from remote Publish URL and save to local workspace database

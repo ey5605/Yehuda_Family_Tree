@@ -68,13 +68,14 @@ app.post('/api/tree', (req, res) => {
     if (!data || typeof data !== 'object') {
       return res.status(400).json({ error: 'Invalid data format' });
     }
+    const timestamp = data.metadata?.lastUpdated || new Date().toISOString();
     data.metadata = {
       ...data.metadata,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: timestamp,
     };
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    return res.json({ success: true, timestamp: data.metadata.lastUpdated });
+    return res.json({ success: true, timestamp });
   } catch (error) {
     console.error('Error saving tree file:', error);
     return res.status(500).json({ error: 'Failed to save data' });
@@ -214,7 +215,12 @@ async function startServer() {
         if (fs.existsSync(indexPath)) {
           let template = fs.readFileSync(indexPath, 'utf-8');
           template = await vite.transformIndexHtml(url, template);
-          res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+          res.status(200).set({
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          }).end(template);
         } else {
           next();
         }

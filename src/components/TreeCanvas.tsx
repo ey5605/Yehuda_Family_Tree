@@ -105,6 +105,10 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   const lastViewTypeRef = useRef(viewType);
   const toggledNodeAnchorRef = useRef<{ id: string; oldX: number; oldY: number } | null>(null);
 
+  // Keep synchronous layoutRef and viewTypeRef updated immediately during render
+  layoutRef.current = layout;
+  viewTypeRef.current = viewType;
+
   useEffect(() => {
     layoutRef.current = layout;
     viewTypeRef.current = viewType;
@@ -145,12 +149,11 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     setPosition({ x: newX, y: newY });
   }, []);
 
-  // Fit and center tree to container.
-  // For wide trees, focus intelligently on the primary ancestral root and its core branch at a clean readable scale,
-  // so the user immediately sees the family cards clearly instead of blank margins or microscopic dots.
-  const fitToScreen = useCallback((smooth = false) => {
-    const currentLayout = layoutRef.current;
-    const currentViewType = viewTypeRef.current;
+  // Fit and center tree to container, focusing on Shalom (p0014) and Bracha (p0019) Generation 4,
+  // at a slightly zoomed out scale so their parents above and children below are also visible in context.
+  const fitToScreen = useCallback((smooth = false, explicitViewType?: ViewType, explicitLayout?: typeof layout) => {
+    const currentLayout = explicitLayout || layoutRef.current;
+    const currentViewType = explicitViewType || viewTypeRef.current;
     if (!containerRef.current || currentLayout.nodes.length === 0) return;
 
     const container = containerRef.current;
@@ -173,63 +176,57 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
 
     if (minX === Infinity || maxX === -Infinity) return;
 
-    const tw = maxX - minX;
-    const th = maxY - minY;
-    if (tw <= 0 || th <= 0) return;
+    // Find Shalom (p0014) and Bracha (p0019) Generation 4
+    const shalomNode = currentLayout.nodes.find(
+      n => n.id === 'p0014' || (n.person?.fullName?.includes('שלום') && (n.generation === 3 || n.generation === 4))
+    );
+    const brachaNode = currentLayout.nodes.find(
+      n => n.id === 'p0019' || (n.person?.fullName?.includes('ברכה') && (n.generation === 3 || n.generation === 4))
+    );
 
-    // Find the primary anchor node (e.g. main Yehuda root or node with highest descendants)
-    const roots = currentLayout.nodes.filter(n => n.generation === 0);
-    let primaryRoot = roots[0] || currentLayout.nodes[0];
-    let maxDesc = -1;
-    for (const r of roots) {
-      if ((r.descendantCount || 0) > maxDesc) {
-        maxDesc = r.descendantCount || 0;
-        primaryRoot = r;
-      }
-    }
+    let targetCenterX: number;
+    let targetCenterY: number;
 
-    // Also check if there is a primary person with "יהודה" to center around
-    const primaryYehuda = currentLayout.nodes.find(n => n.id === 'p0004' || (n.person.fullName && n.person.fullName.includes('יהודה')));
-    const focusNode = primaryYehuda || primaryRoot;
-
-    // If whole tree fits comfortably at a readable scale (>= 0.45), fit whole bounding box.
-    // Otherwise, position the focal root in viewport at a comfortable, fully-legible zoom!
-    const padX = Math.max(cw * 0.06, 36);
-    const padY = Math.max(ch * 0.06, 36);
-    const fitScaleX = (cw - padX * 2) / tw;
-    const fitScaleY = (ch - padY * 2) / th;
-    const wholeTreeFitScale = Math.min(fitScaleX, fitScaleY);
-
-    let newScale: number;
-    let centerX: number;
-    let centerY: number;
-
-    if (wholeTreeFitScale >= 0.45) {
-      // Small or medium tree fits completely on screen with legible text
-      newScale = Math.min(wholeTreeFitScale, 1.0);
-      const treeCenterX = minX + tw / 2;
-      const treeCenterY = minY + th / 2;
-      centerX = cw / 2 - treeCenterX * newScale;
-      centerY = ch / 2 - treeCenterY * newScale;
+    if (shalomNode && brachaNode) {
+      const minPairX = Math.min(shalomNode.x, brachaNode.x);
+      const maxPairX = Math.max(shalomNode.x + shalomNode.width, brachaNode.x + brachaNode.width);
+      const minPairY = Math.min(shalomNode.y, brachaNode.y);
+      const maxPairY = Math.max(shalomNode.y + shalomNode.height, brachaNode.y + brachaNode.height);
+      targetCenterX = (minPairX + maxPairX) / 2;
+      targetCenterY = (minPairY + maxPairY) / 2;
+    } else if (shalomNode) {
+      targetCenterX = shalomNode.x + shalomNode.width / 2;
+      targetCenterY = shalomNode.y + shalomNode.height / 2;
+    } else if (brachaNode) {
+      targetCenterX = brachaNode.x + brachaNode.width / 2;
+      targetCenterY = brachaNode.y + brachaNode.height / 2;
     } else {
-      // Large family tree: Focus on the key family branch at a crystal clear, readable zoom
-      if (currentViewType === 'compact-horizontal') {
-        newScale = Math.min(Math.max((cw * 0.75) / 1400, 0.48), 0.75);
-        // In horizontal RTL: Ancestors are on the right, descendants branch left
-        const targetRightX = focusNode.x + focusNode.width;
-        centerX = cw - Math.max(cw * 0.1, 70) - targetRightX * newScale;
-        centerY = ch / 2 - (focusNode.y + focusNode.height / 2) * newScale;
-      } else {
-        // Vertical views (Detailed or Compact vertical):
-        // Center horizontally on the primary branch, and show generation 0/1/2 nicely from top
-        newScale = Math.min(Math.max((ch * 0.75) / 950, 0.48), 0.75);
-        const focusCenterX = focusNode.x + focusNode.width / 2;
-        centerX = cw / 2 - focusCenterX * newScale;
-        // Position Generation 0 near the top with clean padding
-        const topGenY = primaryRoot ? primaryRoot.y : minY;
-        centerY = Math.max(ch * 0.1, 60) - topGenY * newScale;
-      }
+      // General fallback if neither found
+      const roots = currentLayout.nodes.filter(n => n.generation === 0);
+      const primaryRoot = roots[0] || currentLayout.nodes[0];
+      const primaryYehuda = currentLayout.nodes.find(
+        n => n.id === 'p0004' || (n.person?.fullName && n.person.fullName.includes('יהודה'))
+      );
+      const focus = primaryYehuda || primaryRoot;
+      targetCenterX = focus ? focus.x + focus.width / 2 : (minX + maxX) / 2;
+      targetCenterY = focus ? focus.y + focus.height / 2 : (minY + maxY) / 2;
     }
+
+    // Zoom scale: "קצת בזום אאוט" (slightly zoomed out) centered on Shalom and Bracha (Generation 4)
+    // Ensures great legibility of their cards while showing their branch context (parents above, children below).
+    const isMobile = cw < 640;
+    let newScale: number;
+    if (currentViewType === 'detailed-vertical') {
+      newScale = isMobile ? Math.min(Math.max(cw / 980, 0.38), 0.44) : Math.min(Math.max(cw / 2800, 0.44), 0.50);
+    } else if (currentViewType === 'compact-vertical') {
+      newScale = isMobile ? Math.min(Math.max(cw / 900, 0.42), 0.48) : Math.min(Math.max(cw / 2600, 0.48), 0.54);
+    } else {
+      // compact-horizontal
+      newScale = isMobile ? Math.min(Math.max(cw / 950, 0.40), 0.45) : Math.min(Math.max(cw / 2800, 0.44), 0.50);
+    }
+
+    const centerX = cw / 2 - targetCenterX * newScale;
+    const centerY = ch / 2 - targetCenterY * newScale;
 
     if (smooth) {
       setIsSmoothTransition(true);
@@ -244,38 +241,35 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     setPosition({ x: centerX, y: centerY });
   }, []);
 
-  // Initial fit: runs ONLY ONCE when the canvas is first mounted and populated
+  // Initial fit: runs when the canvas is first mounted and populated
   useEffect(() => {
     if (!containerRef.current || layout.nodes.length === 0) return;
 
     if (!hasFittedInitialRef.current) {
       const timer = setTimeout(() => {
-        fitToScreen(false);
+        fitToScreen(false, viewType, layout);
         hasFittedInitialRef.current = true;
       }, 40);
       return () => clearTimeout(timer);
     }
-  }, [layout.nodes.length, fitToScreen]);
+  }, [layout, viewType, fitToScreen]);
 
-  // Re-fit ONLY when user explicitly triggers fit via button / import
+  // Re-fit when user explicitly triggers fit via button / initial load
   useEffect(() => {
     if (fitTrigger !== lastFitTriggerRef.current) {
       lastFitTriggerRef.current = fitTrigger;
-      if (hasFittedInitialRef.current) {
-        fitToScreen(true);
-      }
+      fitToScreen(hasFittedInitialRef.current, viewType, layout);
+      hasFittedInitialRef.current = true;
     }
-  }, [fitTrigger, fitToScreen]);
+  }, [fitTrigger, viewType, layout, fitToScreen]);
 
-  // Re-fit ONLY when user explicitly switches view type
+  // Re-fit to Shalom and Bracha Gen 4 when user switches view type
   useEffect(() => {
     if (viewType !== lastViewTypeRef.current) {
       lastViewTypeRef.current = viewType;
-      if (hasFittedInitialRef.current) {
-        fitToScreen(false);
-      }
+      fitToScreen(false, viewType, layout);
     }
-  }, [viewType, fitToScreen]);
+  }, [viewType, layout, fitToScreen]);
 
   // Anchor stabilization: when user collapses or expands a branch, pin the toggled node
   // at the exact screen coordinates so the screen never jumps away from where the user is looking
@@ -306,7 +300,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       for (const entry of entries) {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
           if (!hasFittedInitialRef.current && layoutRef.current.nodes.length > 0) {
-            fitToScreen(false);
+            fitToScreen(false, viewTypeRef.current, layoutRef.current);
             hasFittedInitialRef.current = true;
           }
         }

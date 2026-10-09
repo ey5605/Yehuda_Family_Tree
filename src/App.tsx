@@ -173,9 +173,9 @@ export default function App() {
       if (saveStatusRef.current === 'offline' || hasUnsyncedChanges()) {
         if (treeDataRef.current && navigator.onLine) {
           setSaveStatus('saving');
-          const success = await saveFamilyTree(treeDataRef.current);
-          setSaveStatus(success ? 'saved' : 'offline');
-          if (success) {
+          const res = await saveFamilyTree(treeDataRef.current);
+          setSaveStatus(res.success ? 'saved' : 'offline');
+          if (res.success) {
             setIsSyncBannerDismissed(false);
           }
         }
@@ -224,17 +224,35 @@ export default function App() {
 
       setSaveStatus('saving');
       if (immediateSave) {
-        saveFamilyTree(treeWithFreshTimestamp).then(success => {
-          setSaveStatus(success ? 'saved' : 'offline');
-          if (!success) {
+        saveFamilyTree(treeWithFreshTimestamp).then(res => {
+          setSaveStatus(res.success ? 'saved' : 'offline');
+          if (res.success && res.timestamp) {
+            setTreeData(prev => ({
+              ...prev,
+              metadata: {
+                ...prev.metadata,
+                lastUpdated: res.timestamp,
+              },
+            }));
+          }
+          if (!res.success) {
             setIsSyncBannerDismissed(false);
           }
         });
       } else {
         saveTimerRef.current = setTimeout(async () => {
-          const success = await saveFamilyTree(treeWithFreshTimestamp);
-          setSaveStatus(success ? 'saved' : 'offline');
-          if (!success) {
+          const res = await saveFamilyTree(treeWithFreshTimestamp);
+          setSaveStatus(res.success ? 'saved' : 'offline');
+          if (res.success && res.timestamp) {
+            setTreeData(prev => ({
+              ...prev,
+              metadata: {
+                ...prev.metadata,
+                lastUpdated: res.timestamp,
+              },
+            }));
+          }
+          if (!res.success) {
             setIsSyncBannerDismissed(false);
           }
         }, 200);
@@ -265,9 +283,9 @@ export default function App() {
   // Manual sync to server
   const handleSyncToServer = useCallback(async () => {
     setSaveStatus('saving');
-    const success = await saveFamilyTree(treeData);
-    setSaveStatus(success ? 'saved' : 'offline');
-    return success;
+    const res = await saveFamilyTree(treeData);
+    setSaveStatus(res.success ? 'saved' : 'offline');
+    return res.success;
   }, [treeData]);
 
   // Pull latest data directly from server
@@ -409,12 +427,17 @@ export default function App() {
   // Save Person Details
   const handleSavePerson = (updatedPerson: Person) => {
     if (isReadOnly) return;
+    const cleanPerson: Person = { ...updatedPerson };
+    if (!cleanPerson.photoUrl) {
+      delete cleanPerson.photoUrl;
+    }
+    const updatedPersons = {
+      ...treeData.persons,
+      [cleanPerson.id]: cleanPerson,
+    };
     const updated = {
       ...treeData,
-      persons: {
-        ...treeData.persons,
-        [updatedPerson.id]: updatedPerson,
-      },
+      persons: updatedPersons,
     };
     updateTreeData(updated, true, true);
     setIsPersonModalOpen(false);

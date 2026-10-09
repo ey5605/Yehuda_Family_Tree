@@ -229,17 +229,24 @@ export const PersonModal: React.FC<PersonModalProps> = ({
     e.preventDefault();
     if (!fullName.trim()) return;
 
-    onSavePerson({
+    const updated: Person = {
       ...person,
       fullName: fullName.trim(),
       birthDate: birthDate.trim() || undefined,
       isBirthApproximate,
       deathDate: deathDate.trim() || undefined,
       isDeathApproximate,
-      photoUrl,
       gender,
       notes: notes.trim() || undefined,
-    });
+    };
+
+    if (photoUrl) {
+      updated.photoUrl = photoUrl;
+    } else {
+      delete updated.photoUrl;
+    }
+
+    onSavePerson(updated);
   };
 
   // Add Parent action
