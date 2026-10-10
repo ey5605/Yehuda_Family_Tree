@@ -466,155 +466,165 @@ export const PersonModal: React.FC<PersonModalProps> = ({
         {/* Scrollable Form Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6 pb-12 sm:pb-6">
           <form onSubmit={handleSave} className="space-y-5">
-            {/* Photo Avatar & Upload */}
-            <div className="flex items-center gap-4">
-              <div className="relative w-20 h-20 rounded-2xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center group shadow-xs">
-                {photoUrl ? (
-                  <img
-                    src={photoUrl}
-                    alt={fullName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-10 h-10 text-stone-300" />
-                )}
+            {/* Top Section: Enlarged Photo on Right, Name & Gender Stacked on Left (RTL) */}
+            <div className="flex items-start gap-3 sm:gap-4">
+              {/* Photo Column (Right in RTL) */}
+              <div className="flex flex-col items-center shrink-0 w-36 sm:w-40">
+                <div className="relative w-36 h-36 sm:w-40 sm:h-40 rounded-2xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center group shadow-xs">
+                  {photoUrl ? (
+                    <img
+                      src={photoUrl}
+                      alt={fullName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-16 h-16 sm:w-20 sm:h-20 text-stone-300" />
+                  )}
+
+                  {!isReadOnly && (
+                    <label
+                      htmlFor="photo-upload"
+                      className="absolute inset-0 bg-stone-900/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 cursor-pointer transition-opacity text-white font-medium text-xs backdrop-blur-[2px]"
+                    >
+                      {isUploadingPhoto ? (
+                        <RefreshCw className="w-6 h-6 animate-spin text-amber-200" />
+                      ) : (
+                        <>
+                          <Camera className="w-6 h-6" />
+                          <span>{photoUrl ? 'החלף' : 'העלה'}</span>
+                        </>
+                      )}
+                    </label>
+                  )}
+                </div>
 
                 {!isReadOnly && (
-                  <label
-                    htmlFor="photo-upload"
-                    className="absolute inset-0 bg-stone-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity text-white"
-                  >
-                    {isUploadingPhoto ? (
-                      <RefreshCw className="w-5 h-5 animate-spin text-amber-200" />
-                    ) : (
-                      <Camera className="w-5 h-5" />
-                    )}
-                  </label>
-                )}
-              </div>
-
-              {!isReadOnly && (
-                <div className="flex flex-col gap-1.5">
-                  <input
-                    ref={fileInputRef}
-                    id="photo-upload"
-                    type="file"
-                    accept="image/*"
-                    onClick={e => {
-                      (e.target as HTMLInputElement).value = '';
-                    }}
-                    onChange={handlePhotoUpload}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={isUploadingPhoto}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 rounded-lg transition-colors text-right flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {isUploadingPhoto ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-700 shrink-0" />
-                        <span>מעבד תמונה...</span>
-                      </>
-                    ) : (
-                      <span>{photoUrl ? 'החלף תמונה' : 'העלה תמונה'}</span>
-                    )}
-                  </button>
-                  {photoUrl && (
+                  <div className="flex items-center justify-center gap-1.5 mt-2 w-full">
+                    <input
+                      ref={fileInputRef}
+                      id="photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onClick={e => {
+                        (e.target as HTMLInputElement).value = '';
+                      }}
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
                     <button
                       type="button"
                       disabled={isUploadingPhoto}
-                      onClick={() => setPhotoUrl(undefined)}
-                      className="px-3 py-1 text-xs text-rose-600 hover:text-rose-700 transition-colors text-right flex items-center gap-1 cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 py-1.5 px-2 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 rounded-lg transition-colors text-center flex items-center justify-center gap-1 cursor-pointer"
                     >
-                      <Trash2 className="w-3 h-3" />
-                      הסר תמונה
+                      {isUploadingPhoto ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-700 shrink-0" />
+                          <span>מעבד...</span>
+                        </>
+                      ) : (
+                        <span>{photoUrl ? 'החלף תמונה' : 'העלה תמונה'}</span>
+                      )}
                     </button>
-                  )}
-                  {photoError && (
-                    <div className="text-[11px] text-rose-600 font-medium mt-0.5 max-w-[220px]">
-                      {photoError}
+                    {photoUrl && (
+                      <button
+                        type="button"
+                        disabled={isUploadingPhoto}
+                        onClick={() => setPhotoUrl(undefined)}
+                        title="הסר תמונה"
+                        className="p-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors flex items-center justify-center cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {photoError && (
+                  <div className="text-[11px] text-rose-600 font-medium mt-1 text-center max-w-full">
+                    {photoError}
+                  </div>
+                )}
+              </div>
+
+              {/* Details Column: Name & Gender (Left of Photo in RTL) */}
+              <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch py-0.5">
+                {/* Full Name Field */}
+                <div>
+                  <label className="block text-xs font-medium text-stone-700 mb-1">
+                    שם מלא <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    disabled={isReadOnly}
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    placeholder="לדוגמה: ישראל יהודה"
+                    className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100"
+                  />
+                  {duplicateNames.length > 0 && (
+                    <div className="mt-1 text-xs text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 flex items-start gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span className="text-[11px] leading-tight">
+                        קיים כבר אדם בעץ עם שם זה ({duplicateNames.map(d => d.fullName).join(', ')}).
+                      </span>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Full Name & Gender Row */}
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <label className="block text-xs font-medium text-stone-700">
-                  שם מלא <span className="text-rose-500">*</span>
-                </label>
-                <span className="text-[11px] font-medium text-stone-500">מין בן המשפחה:</span>
-              </div>
-              <div className="flex items-center gap-2 sm:gap-2.5">
-                <input
-                  type="text"
-                  required
-                  disabled={isReadOnly}
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  placeholder="לדוגמה: ישראל יהודה"
-                  className="flex-1 min-w-0 px-3 py-2 text-base sm:text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-stone-400 focus:outline-none placeholder:text-stone-300/60 disabled:bg-stone-100"
-                />
-
-                {/* Gender Checkboxes */}
-                <div className="flex items-center gap-1.5 shrink-0 select-none">
-                  {/* Male Checkbox */}
-                  <label
-                    title="גבר (מסגרת כחולה)"
-                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                      gender === 'male'
-                        ? 'bg-blue-50 text-blue-800 border-blue-400 shadow-2xs font-semibold'
-                        : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
-                    } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={isReadOnly}
-                      checked={gender === 'male'}
-                      onChange={() => {
-                        if (isReadOnly) return;
-                        setGender(prev => (prev === 'male' ? undefined : 'male'));
-                      }}
-                      className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                    />
-                    <span>גבר</span>
+                {/* Gender Field under Name, aligned with Photo */}
+                <div className="mt-2.5 sm:mt-3">
+                  <label className="block text-xs font-medium text-stone-700 mb-1">
+                    מין בן/בת המשפחה
                   </label>
+                  <div className="flex items-center gap-1.5 sm:gap-2 select-none">
+                    {/* Male Checkbox */}
+                    <label
+                      title="גבר (מסגרת כחולה)"
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 sm:px-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                        gender === 'male'
+                          ? 'bg-blue-50 text-blue-800 border-blue-400 shadow-2xs font-semibold'
+                          : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
+                      } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={isReadOnly}
+                        checked={gender === 'male'}
+                        onChange={() => {
+                          if (isReadOnly) return;
+                          setGender(prev => (prev === 'male' ? undefined : 'male'));
+                        }}
+                        className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600 shrink-0"
+                      />
+                      <span className="truncate">גבר</span>
+                    </label>
 
-                  {/* Female Checkbox */}
-                  <label
-                    title="אישה (מסגרת ורודה)"
-                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                      gender === 'female'
-                        ? 'bg-rose-50 text-rose-800 border-rose-400 shadow-2xs font-semibold'
-                        : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
-                    } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={isReadOnly}
-                      checked={gender === 'female'}
-                      onChange={() => {
-                        if (isReadOnly) return;
-                        setGender(prev => (prev === 'female' ? undefined : 'female'));
-                      }}
-                      className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-500"
-                    />
-                    <span>אישה</span>
-                  </label>
+                    {/* Female Checkbox */}
+                    <label
+                      title="אישה (מסגרת ורודה)"
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 sm:px-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                        gender === 'female'
+                          ? 'bg-rose-50 text-rose-800 border-rose-400 shadow-2xs font-semibold'
+                          : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-50'
+                      } ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={isReadOnly}
+                        checked={gender === 'female'}
+                        onChange={() => {
+                          if (isReadOnly) return;
+                          setGender(prev => (prev === 'female' ? undefined : 'female'));
+                        }}
+                        className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-500 shrink-0"
+                      />
+                      <span className="truncate">אישה</span>
+                    </label>
+                  </div>
                 </div>
               </div>
-              {duplicateNames.length > 0 && (
-                <div className="mt-1.5 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200 flex items-start gap-1.5">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    שים לב: קיים כבר אדם בעץ עם השם הזה ({duplicateNames.map(d => d.fullName).join(', ')}). המערכת מאפשרת שמות זהים, אך ודא שאין מדובר בכפילות.
-                  </span>
-                </div>
-              )}
             </div>
 
             {/* Dates Row: Birth and Death */}
